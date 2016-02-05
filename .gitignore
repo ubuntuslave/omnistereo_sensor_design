@@ -5,6 +5,8 @@ __init__.pyc
 .pydevproject
 *Config.py
 code.py
+# Don't track checkpoints
+.ipynb_checkpoints
 
 # Some usual extensions and folders
 .DS_Store
