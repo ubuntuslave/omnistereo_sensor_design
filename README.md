@@ -9,7 +9,7 @@ The following iPython Notebooks reproce the analysis plots performed over the *T
 - **Author**: Carlos Jaramillo
 - **Contact**: <cjaramillo@gradcenter.cuny.edu>
 
-*Copyright (C)* 2013 under the *Gnu Public License version 2 (GPL2)*
+*Copyright (C)* 2016 under the *Gnu Public License version 2 (GPL2)*
 
 ***WARNING***: This code is at an experimental stage
  
