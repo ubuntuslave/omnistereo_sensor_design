@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/ubuntuslave/omnistereo_sensor_design/master/images/graphical_representation_of_the_paper.png" title='Omnistereo Sensor Paper Graphical Representation' width='300px' alt='Omnistereo Sensor Paper Graphical Representation' />
+<img src="https://raw.githubusercontent.com/ubuntuslave/omnistereo_sensor_design/master/images/graphical_representation_of_the_paper.png" title='Omnistereo Sensor Paper Graphical Representation' width='550px' alt='Omnistereo Sensor Paper Graphical Representation' />
 
 # Supplementary Materials for the "*Design and Analysis of a Single-Camera Omnistereo Sensor for Quadrotor Micro Aerial Vehicles (MAVs)*" 
 
