@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/ubuntuslave/omnistereo_sensor_design/master/images/graphical_representation_of_the_paper.png" title='Omnistereo Sensor Paper Graphical Representation' width='300px' alt='Omnistereo Sensor Paper Graphical Representation' />
+
 # Supplementary Materials for the "*Design and Analysis of a Single-Camera Omnistereo Sensor for Quadrotor Micro Aerial Vehicles (MAVs)*" 
 
 The following iPython Notebooks reproce the analysis plots performed over the *Theoretical Model* for the catadioptric omnidirectional stereo sensor proposed in the corresponding [Sensors Article](http://www.mdpi.com/1424-8220/16/2/217/) published in February 6, 2016.
