@@ -184,6 +184,7 @@ def vis_omnistereo_and_grids(omni_model, T_W_wrt_C_list, points_wrt_pattern, che
     return app
 
 do_next_frame = False  # Global variable used during 3D Point Cloud visualization
+
 def compute_pointclouds_simple(omnistereo_model, omni_img_filename_template=None, img_indices=[], compute_new_3D_points=True, points_3D_filename_template="3d_points-*.pkl", features_detected_filename_template="feature_correspondences-*.pkl", dense_cloud=True, manual_point_selection=False, load_stereo_tuner_from_pickle=False, save_pcl=False, pcd_cloud_path="data", stereo_tuner_filename="stereo_tuner.pkl", tune_live=False, save_sparse_features=False, load_sparse_features_from_file=False):
     '''
     This simple function doesn't transform the pose of the cloud frame with respect to the scene
@@ -426,6 +427,297 @@ def compute_pointclouds_simple(omnistereo_model, omni_img_filename_template=None
 
         print("DONE with", idx)
         do_next_frame = False  # Update global variable
+
+
+def compute_pointclouds(omnistereo_model, poses_filename=None, omni_img_filename_template=None, img_indices=[], compute_new_3D_points=True, points_3D_filename_template="3d_points-*.pkl", features_detected_filename_template="feature_correspondences-*.pkl", dense_cloud=True, manual_point_selection=False, show_3D_reference_cyl=False, load_stereo_tuner_from_pickle=False, save_pcl=False, pcd_cloud_path="data", stereo_tuner_filename="stereo_tuner.pkl", tune_live=False, save_sparse_features=False, load_sparse_features_from_file=False):
+    global do_next_frame
+    from omnistereo import common_tools
+    from omnistereo.camera_models import FeatureMatcher
+    from cv2 import waitKey  # WISHME: use something more generic in case OpenCV doesn't exist
+    from omnistereo.common_cv import get_images, get_feature_matches_data_from_files
+    # 3D Visualization (Setup)
+    import vispy.scene
+    from vispy.scene import visuals
+    from vispy import use, app
+    use(app="glfw", gl="gl2")
+
+    #
+    # Make a canvas and add simple view
+    #
+    canvas = vispy.scene.SceneCanvas(keys='interactive', show=True, title="Point Cloud")
+
+    # Implement key presses
+    @canvas.events.key_press.connect
+    def on_key_press(event):
+        global do_next_frame  # NOTE: Ugly need of global variable since "I think" these events cannot take arguments
+        # TODO: instantiate own Canvas class (see examples) so class attributes can accessed without using global variables
+        if event.text.lower() == 'n':
+            do_next_frame = True
+
+    view = canvas.central_widget.add_view()
+    view.camera = 'arcball'  # 'turntable'  # or try 'arcball'
+    # add a colored 3D axis for orientation
+    axis = visuals.XYZAxis(parent=view.scene)
+    view.add(axis)
+    # Add grid
+    grid_3D = vispy.scene.visuals.GridLines()  # color="yellow")
+    view.add(grid_3D)
+
+    import sys
+    if sys.flags.interactive != 1:
+        app.create()
+
+    # create scatter object for the first time
+    scatter = visuals.Markers()
+    view.add(scatter)
+
+    if omni_img_filename_template is None:
+        # Assuming the list is sorted increasingly:
+        # Use only the current image in the list by align to index? Not feasible because we don't know what index the image is from
+        omni_images_list = (img_indices[-1] + 1) * [omnistereo_model.current_omni_img]
+    else:
+        omni_images_list = get_images(omni_img_filename_template, indices_list=img_indices, show_images=True)
+
+    # Visual Odometry (Pose Estimation) test
+    pano_width = np.pi * np.linalg.norm(omnistereo_model.bot_model.lowest_img_point - omnistereo_model.bot_model.precalib_params.center_point)
+    # ------------------------------------------------------
+    if poses_filename is None:
+        pose_info = 7 * [0.0]
+        # Zero translation
+        pose_info[4] = 0.0
+        pose_info[5] = 0.0
+        pose_info[6] = 0.0
+        # No rotation for Camera frame [C] pose wrt to Scene frame [S]
+        [pose_info[0], pose_info[1], pose_info[2], pose_info[3]] = [1., 0., 0., 0.]
+        # Fill up the result lists:
+        # Use only the current image in the list by align to index? Not feasible because we don't know what index the image is from
+        grid_poses_list = (img_indices[-1] + 1) * [pose_info]
+        transform_matrices_list = (img_indices[-1] + 1) * [common_tools.get_transformation_matrix(pose_info)]
+    else:
+        grid_poses_list, transform_matrices_list = common_tools.get_poses_from_file(poses_filename=poses_filename, input_units="cm", model_working_units=omnistereo_model.units, indices=img_indices)
+    # ------------------------------------------------------
+    units_scale_factor = 1 / 1000.  # In Meters (so XYZ axes can be shown up to scale)
+    axis_length = 0.25
+
+    if dense_cloud:
+        min_disp = 2
+        max_disp = 0
+        vis_pt_size = 5
+    else:
+        # Visualize inlier matches
+        from  omnistereo_model.common_cv import filter_correspondences_manually
+        vis_pt_size = 10
+        first_row_to_crop_bottom = 20  # <<<< SETME (TEMP) For Journal Paper (Sensors)
+
+        detection_method = "AGAST"  # Best so far with "BRISK" as its descriptor
+        matching_type = "BF"
+        features_detected_filename_template = features_detected_filename_template.replace("*", detection_method + "_" + matching_type + "-*", 1)
+        if load_sparse_features_from_file:
+            from cv2 import KeyPoint
+            feature_matches_data_list = get_feature_matches_data_from_files(features_detected_filename_template, indices_list=img_indices)
+        else:
+            min_disp = 1  # for v-axis
+            max_u_dist = 1.10  # for u-axis in order to filter vertically aligned features
+            k_best_matches = 1  # To set the number of k nearest matches in the matcher
+            omnistereo_model.feature_matcher = FeatureMatcher(method=detection_method, matcher_type=matching_type, k_best=k_best_matches)  # NOTE: BRISK and ORB fail to match with FLANN
+            # pixel_error_threshold = 1.2  # WRONG! there is not point since the ray should back-project to the same spot.
+            # Use this for the frame to frame comparisson only
+            min_range = 100  # in [mm]  <<<<<<<< SETME: ?? for new rig
+            max_range = 4000  # in [mm] = 10 meters <<<<<<<< SETME: 10000 for new rig
+            manual_filtering = False
+
+        # Generate azimuthal masks on panoramas
+        omnistereo_model.top_model.panorama.generate_azimuthal_masks(azimuth_mask_degrees=5, overlap_degrees=0, show=False)
+        omnistereo_model.bot_model.panorama.generate_azimuthal_masks(azimuth_mask_degrees=5, overlap_degrees=0, show=False)
+
+    if dense_cloud == False:
+        last_key_pts_top = None
+        last_desc_top = None
+        last_m_top = None
+
+    # Running multiple views (as visualizing all point clouds)
+    for idx in img_indices:
+        # TODO: speed up this setting?
+        omnistereo_model.set_current_omni_image(omni_images_list[idx], pano_width_in_pixels=pano_width, generate_panoramas=True, view=False, apply_pano_mask=True, mask_RGB=(0, 0, 0))  # Using Black pano mask
+
+        points_3D_filename = points_3D_filename_template.replace("*", str(idx), 1)
+
+        if compute_new_3D_points:
+            if dense_cloud:
+                omnistereo_model.get_depth_map_from_panoramas(method="sgbm", use_cropped_panoramas=False, show=True, load_stereo_tuner_from_pickle=load_stereo_tuner_from_pickle, stereo_tuner_filename=stereo_tuner_filename, tune_live=tune_live)
+            #     omni_stereo.get_correspondences_from_clicked_points()  # For testing disparity matches purposes
+                #===========================================================================
+                # Generate 3D point cloud
+                if manual_point_selection:
+                    xyz_points, rgb_points = omnistereo_model.triangulate_from_clicked_points(min_disparity=min_disp, max_disparity=max_disp, use_PCL=save_pcl, export_to_pcd=False, cloud_path=pcd_cloud_path, use_LUTs=False)
+                else:
+                    xyz_points, rgb_points = omnistereo_model.triangulate_from_depth_map(min_disparity=min_disp, max_disparity=max_disp, use_PCL=save_pcl, export_to_pcd=True, cloud_path=pcd_cloud_path, use_LUTs=False)
+            else:
+                view.children[0].children.remove(scatter)  # TEMP: Clear point makers (to visualize each frame's features only) NOT cummulative
+                if load_sparse_features_from_file:
+                    # Load feature data set from list
+                    (matched_m_top, matched_kpts_top_serial, matched_desc_top), (matched_m_bot, matched_kpts_bot_serial, matched_desc_bot), random_colors_RGB = feature_matches_data_list[idx]
+                                        # WISHME: Needs to serialize the cv2.KeyPoint before dumping them with Pickle.
+                    # So represent every keypoint with a tuple:
+                    matched_kpts_top = np.empty_like(matched_kpts_top_serial)
+                    matched_kpts_bot = np.empty_like(matched_kpts_bot_serial)
+                    num_of_point_correspondences = len(matched_kpts_top_serial)
+                    print(num_of_point_correspondences, "Point Correspondences loaded from pickle.")
+
+                    for i in range(num_of_point_correspondences):
+                        k_top = matched_kpts_top_serial[i]
+                        k_bot = matched_kpts_bot_serial[i]
+                        matched_kpts_top[i] = KeyPoint(x=k_top[0][0], y=k_top[0][1], _size=k_top[1], _angle=k_top[2], _response=k_top[3], _octave=k_top[4], _class_id=k_top[5])
+                        matched_kpts_bot[i] = KeyPoint(x=k_bot[0][0], y=k_bot[0][1], _size=k_bot[1], _angle=k_bot[2], _response=k_bot[3], _octave=k_bot[4], _class_id=k_bot[5])
+
+                    az1, el1 = omnistereo_model.top_model.panorama.get_direction_angles_from_pixel_pano(matched_m_top, use_LUTs=False)  # FIXME: change use_LUTs to True
+                    az2, el2 = omnistereo_model.bot_model.panorama.get_direction_angles_from_pixel_pano(matched_m_bot, use_LUTs=False)
+                    # Get XYZ from triangulation and put into some cloud
+                    xyz_points = omnistereo_model.get_triangulated_point_from_direction_angles(dir_angs_top=(az1, el1), dir_angs_bot=(az2, el2), use_midpoint_triangulation=True)
+                else:  # Compute and save
+                    # omni_stereo.top_model.detect_sparse_features_on_panorama()
+                    (matched_m_top, matched_kpts_top, matched_desc_top), (matched_m_bot, matched_kpts_bot, matched_desc_bot), random_colors_RGB = omnistereo_model.match_features_panoramic_top_bottom(min_rectified_disparity=min_disp, max_horizontal_diff=max_u_dist, show_matches=False)
+                    # Get xyz and rgb sparse points
+                    # WISH: Get the floating point coordinates instead of int, so we can use precision elevation without LUTs
+                    # NOTE: at the moment, angles are being resolved discretely, which can add error to the triangulation
+                    az1, el1 = omnistereo_model.top_model.panorama.get_direction_angles_from_pixel_pano(matched_m_top, use_LUTs=False)  # FIXME: change use_LUTs to True
+                    az2, el2 = omnistereo_model.bot_model.panorama.get_direction_angles_from_pixel_pano(matched_m_bot, use_LUTs=False)
+                    # Get XYZ from triangulation and put into some cloud
+                    xyz_points_initial = omnistereo_model.get_triangulated_point_from_direction_angles(dir_angs_top=(az1, el1), dir_angs_bot=(az2, el2), use_midpoint_triangulation=True)
+                    # Filter outlier feature correspondences by projecting 3D points and measuring pixel norm to matched_m_top and matched_m_bot, so only pixels under a certain distance threshold remain.
+                    # good_points_indices = omnistereo_model.filter_panoramic_points_due_to_reprojection_error(matched_m_top, matched_m_bot, xyz_points_initial, pixel_error_threshold=pixel_error_threshold)
+                    good_points_indices = omnistereo_model.filter_panoramic_points_due_to_range(xyz_points_initial, min_3D_range=min_range, max_3D_range=max_range)
+                    num_of_inliers = np.count_nonzero(good_points_indices)
+                    print(num_of_inliers, "inliers.")
+                    xyz_points = xyz_points_initial[good_points_indices][np.newaxis, ...]
+                    matched_m_top = matched_m_top[good_points_indices][np.newaxis, ...]
+                    matched_m_bot = matched_m_bot[good_points_indices][np.newaxis, ...]
+                    random_colors_RGB = np.array(random_colors_RGB, dtype=tuple)[good_points_indices[0, :]]
+                    # NOTE: it's safe to convert these lists to numpy arrays, but just remember they have changed!
+                    matched_kpts_top = np.array(matched_kpts_top)[good_points_indices[0, :]]
+                    matched_desc_top = np.array(matched_desc_top)[good_points_indices[0, :]]
+                    matched_kpts_bot = np.array(matched_kpts_bot)[good_points_indices[0, :]]
+                    matched_desc_bot = np.array(matched_desc_bot)[good_points_indices[0, :]]
+
+                    if manual_filtering:  # Filter lists according to only good points
+                        _, _ = filter_correspondences_manually(train_img=omnistereo_model.top_model.panorama.panoramic_img, query_img=omnistereo_model.bot_model.panorama.panoramic_img, train_kpts=matched_kpts_top, query_kpts=matched_kpts_bot, colors_RGB=random_colors_RGB, first_row_to_crop_bottom=first_row_to_crop_bottom, do_filtering=False)
+                        waitKey(0)  # TEMP: just to visualize initial point filtering
+                        # Filter again:
+                        valid_match_indices, matches_img = filter_correspondences_manually(train_img=omnistereo_model.top_model.panorama.panoramic_img, query_img=omnistereo_model.bot_model.panorama.panoramic_img, train_kpts=matched_kpts_top, query_kpts=matched_kpts_bot, colors_RGB=random_colors_RGB, first_row_to_crop_bottom=first_row_to_crop_bottom, do_filtering=True)
+                        random_colors_RGB = random_colors_RGB[valid_match_indices]
+                        matched_kpts_top = matched_kpts_top[valid_match_indices]
+                        matched_desc_top = matched_desc_top[valid_match_indices]
+                        matched_kpts_bot = matched_kpts_bot[valid_match_indices]
+                        matched_desc_bot = matched_desc_bot[valid_match_indices]
+                        xyz_points = xyz_points[0, valid_match_indices][np.newaxis, ...]
+                        matched_m_top = matched_m_top[0, valid_match_indices][np.newaxis, ...]
+                        matched_m_bot = matched_m_bot[0, valid_match_indices][np.newaxis, ...]
+                        num_of_inliers = np.count_nonzero(valid_match_indices)
+                        print(num_of_inliers, "inliers after manual filtering.")
+
+                        # and filter again (just in case):
+                        valid_match_indices_refined, matches_img = filter_correspondences_manually(train_img=omnistereo_model.top_model.panorama.panoramic_img, query_img=omnistereo_model.bot_model.panorama.panoramic_img, train_kpts=matched_kpts_top, query_kpts=matched_kpts_bot, colors_RGB=random_colors_RGB, first_row_to_crop_bottom=first_row_to_crop_bottom, do_filtering=True)
+                        random_colors_RGB = random_colors_RGB[valid_match_indices_refined]
+                        matched_kpts_top = matched_kpts_top[valid_match_indices_refined]
+                        matched_desc_top = matched_desc_top[valid_match_indices_refined]
+                        matched_kpts_bot = matched_kpts_bot[valid_match_indices_refined]
+                        matched_desc_bot = matched_desc_bot[valid_match_indices_refined]
+                        xyz_points = xyz_points[0, valid_match_indices_refined][np.newaxis, ...]
+                        matched_m_top = matched_m_top[0, valid_match_indices_refined][np.newaxis, ...]
+                        matched_m_bot = matched_m_bot[0, valid_match_indices_refined][np.newaxis, ...]
+
+                        num_of_inliers = np.count_nonzero(valid_match_indices_refined)
+                        print(num_of_inliers, "inliers (after second manual refinement).")
+
+                    # Save feature data set to pickle
+                    features_data_filename = features_detected_filename_template.replace("*", str(idx), 1)
+                    # WISHME: Needs to serialize the cv2.KeyPoint before dumping them with Pickle.
+                    # So represent every keypoint with a tuple:
+                    matched_kpts_top_serial = np.empty_like(matched_kpts_top)
+                    matched_kpts_bot_serial = np.empty_like(matched_kpts_bot)
+                    for i in range(num_of_inliers):
+                        k_top = matched_kpts_top[i]
+                        k_bot = matched_kpts_bot[i]
+                        matched_kpts_top_serial[i] = (k_top.pt, k_top.size, k_top.angle, k_top.response, k_top.octave, k_top.class_id)
+                        matched_kpts_bot_serial[i] = (k_bot.pt, k_bot.size, k_bot.angle, k_bot.response, k_bot.octave, k_bot.class_id)
+
+                    common_tools.save_obj_in_pickle([(matched_m_top, matched_kpts_top_serial, matched_desc_top), (matched_m_bot, matched_kpts_bot_serial, matched_desc_bot), random_colors_RGB], features_data_filename, locals())
+
+                # Just show the resulting matches:
+                _, _ = filter_correspondences_manually(train_img=omnistereo_model.top_model.panorama.panoramic_img, query_img=omnistereo_model.bot_model.panorama.panoramic_img, train_kpts=matched_kpts_top, query_kpts=matched_kpts_bot, colors_RGB=random_colors_RGB, first_row_to_crop_bottom=first_row_to_crop_bottom, do_filtering=False)
+                points_3D, rgb_points = omnistereo_model.generate_point_clouds(xyz_points, matched_m_top, rgb_colors=random_colors_RGB, use_PCL=save_pcl, export_to_pcd=save_pcl, cloud_path=pcd_cloud_path + "/sparse")
+                xyz_points = points_3D  # In case they are homogeneous
+                # TODO: Track inliers on second frame
+
+                if save_sparse_features:
+                    common_tools.save_obj_in_pickle([xyz_points, rgb_points], points_3D_filename, locals())
+
+                if last_desc_top is not None:
+                    # Perform match between top panoramic images from the current time frame and previous frame.
+                    pass
+
+                last_key_pts_top = matched_kpts_top
+                last_desc_top = matched_desc_top
+                last_m_top = matched_m_top
+
+        else:
+            [xyz_points, rgb_points] = common_tools.load_obj_from_pickle(points_3D_filename)
+
+
+        #===============================================================================
+        # 3D Visualization (Continued)
+
+        # Points data
+        # Transform point positions wrt Scene (reference frame)
+        # xyz_points_nonhomo = xyz_points[0, ...]
+        # points_wrt_C = np.hstack((xyz_points_nonhomo, np.ones(shape=(xyz_points_nonhomo.shape[0], 1))))  # Make homogeneous point coordinates
+        points_wrt_C = xyz_points[0, ...]
+        points_wrt_S = np.einsum("ij, nj->ni", transform_matrices_list[idx], points_wrt_C)
+
+        pts_pos = points_wrt_S[:, :3] * units_scale_factor
+        # fill in the point-cloud data
+        pts_colors = np.hstack((rgb_points / 255., np.ones_like(rgb_points[..., 0, np.newaxis])))  # Adding alpha=1 channel
+        scatter.set_data(pts_pos, edge_color=None, face_color=pts_colors, size=vis_pt_size)
+        view.add(scatter)
+
+        if show_3D_reference_cyl:
+            import cv2
+#             cyl_tube = visuals.Tube()
+#             view.add(cyl_tube)
+            cyl_scatter = visuals.Markers()
+            cyl_pts_pos = omnistereo_model.top_model.panorama.get_points_on_cylinder(radius_cyl_pan=1).astype('float32').reshape(-1, 3)  # * units_scale_factor
+            cyl_RGB_colors = cv2.cvtColor(omnistereo_model.top_model.panorama.panoramic_img, cv2.COLOR_BGR2RGB).astype('float32').reshape(-1, 3)
+            # create scatter object and fill in the data
+            cyl_pts_colors = np.hstack((cyl_RGB_colors / 255., np.ones_like(cyl_RGB_colors[..., 0, np.newaxis])))  # Adding alpha=1 channel
+            cyl_scatter.set_data(cyl_pts_pos, edge_color=None, face_color=cyl_pts_colors, size=5)
+            view.add(cyl_scatter)
+
+        # Add axis of camera to visualize pose changes
+        pose_vector = grid_poses_list[idx]
+        orig_coords = np.array(pose_vector[4:]) * units_scale_factor
+        axis_end_pts_homo = np.array([[axis_length / units_scale_factor, 0, 0], [0, axis_length / units_scale_factor, 0], [0, 0, axis_length / units_scale_factor], [1, 1, 1]])  # Column vectors
+        axis_end_pts_transformed = np.dot(transform_matrices_list[idx], axis_end_pts_homo)[:-1] * units_scale_factor
+        # TODO: Apply axis rotation
+        pose_frame_axis = np.array([
+                                    orig_coords,  # Orig
+                                    axis_end_pts_transformed[:, 0],  # X
+                                    orig_coords,  # Orig
+                                    axis_end_pts_transformed[:, 1],  # Y
+                                    orig_coords,  # Orig
+                                    axis_end_pts_transformed[:, 2]  # Z
+                                    ])
+        rig_axis = visuals.XYZAxis()
+        rig_axis.set_data(pos=pose_frame_axis, width=5)
+        view.add(rig_axis)
+
+        while not do_next_frame:
+            app.process_events()
+            canvas.update()
+            waitKey(10)  # From OpenCV (cv2 module)
+
+        print("DONE with", idx)
+        do_next_frame = False  # Update global variable
+
 
 
 def draw_model_mono_visvis(theoretical_omni_model, app=None, finish_drawing=True, pt_size=5, line_thickness=1, pt_font_size=14, mirror_transparency=0.9, show_labels=True, show_focii=True, show_only_real_focii=False, show_reference_frame=True, show_grid_box=True, busy_grid=True):
@@ -1264,6 +1556,102 @@ def draw_fwd_projection_omnistereo(omnistereo_model, Pw, ax=None, verbose=False,
     plt.show()  # Show both figures in separate windows
     return ax
 
+def draw_fwd_projection_GUM(model, ax=None):
+    '''
+    @return the drawn axis correspoding to the parameter ax of the figure
+    '''
+
+    is_new_figure = False
+
+    if ax == None:
+        is_new_figure = True
+        from mpl_toolkits.mplot3d import Axes3D  # To be run from the command line
+#             from mplot3d import axes3d
+        import matplotlib.pyplot as plt
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+
+    # make simple, bare axis lines through space:
+    ax.set_aspect("equal")
+    max_axis = 2
+    ax.set_xlim3d(-max_axis, max_axis)
+    ax.set_ylim3d(-max_axis, max_axis)
+    ax.set_zlim3d(-max_axis, max_axis)
+    axis_range = (0, max_axis)
+    xAxisLine = (axis_range, (0, 0), (0, 0))  # 2 points make the x-axis line at the data extrema along x-axis
+    ax.plot(xAxisLine[0], xAxisLine[1], xAxisLine[2], 'r')  # make a red line for the x-axis.
+    yAxisLine = ((0, 0), axis_range, (0, 0))  # 2 points make the y-axis line at the data extrema along y-axis
+    ax.plot(yAxisLine[0], yAxisLine[1], yAxisLine[2], 'g')  # make a green line for the y-axis.
+    zAxisLine = ((0, 0), (0, 0), axis_range)  # 2 points make the z-axis line at the data extrema along z-axis
+    ax.plot(zAxisLine[0], zAxisLine[1], zAxisLine[2], 'b')  # make a blue line
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+
+    plot_title = model.mirror_name + " GUM"
+    ax.set_title(plot_title, loc='center')
+    # Show name of mirror as text
+    # ax.text2D(0.05, 0.95, plot_title, transform=ax.transAxes)
+
+    # Draw unit sphere
+    u = np.linspace(0, 2 * np.pi, 100)
+    v = np.linspace(0, np.pi, 100)
+    scale = 1.0
+    x = scale * np.outer(np.cos(u), np.sin(v))
+    y = scale * np.outer(np.sin(u), np.sin(v))
+    z = scale * np.outer(np.ones(np.size(u)), np.cos(v))
+    ax.plot_surface(x, y, z, rstride=6, cstride=6, color='g', alpha=0.25, linewidth=0.05, shade=False)
+
+    # Draw center of model
+    ax.scatter(0. , 0., 0. , color="black", s=20)
+    ax.text(0.1, 0., 0., "M", color="black")
+    # Draw center of projection (Cp)
+    ax.scatter(model.Cp_wrt_M[0], model.Cp_wrt_M[1], model.Cp_wrt_M[2], color="r", marker='o', s=50)
+    ax.text(model.Cp_wrt_M[0] + 0.1, model.Cp_wrt_M[1], model.Cp_wrt_M[2], "Cp", color='red')
+
+    # Draw normalized projection plane
+    # Plot a 3D plane:
+#         normal = model.normalized_projection_plane.n
+    normal = model.plane_n
+    # a plane is a*x+b*y+c*z=d
+    # [a,b,c] is the normal.
+    # To calculate d = -point.dot(normal)
+#         d = model.normalized_projection_plane.k
+    d = model.plane_k
+    # create grid of x,y values
+    plane_width = 6.
+    plane_height = 4.
+    # Recall that stop in range is non-inclusive.
+    xx, yy = np.meshgrid(np.arange(-plane_width / 2, plane_width / 2 + 1, 0.5),
+                         np.arange(-plane_height / 2, plane_height / 2 + 1, 0.5))
+    # calculate corresponding z = -(a*x+b*y-d)/c
+#         zz = -(normal.x * xx + normal.y * yy - d) / normal.z
+    zz = -(normal[0] * xx + normal[1] * yy - d) / normal[2]
+    # draw "solid" planar surface (but it occludes others sometimes on view)
+    # ax.plot_surface(xx, yy, zz, color="yellow", shade=False, alpha=.75, linewidth=0, zorder=-1)
+    ax.plot_wireframe(xx, yy, zz, color="yellow")
+    ax.text(plane_width / 4, 0, -d + 0.1, "Proj. Norm. Plane", color='brown', zdir='y')
+
+    # WISH: Draw image plane with pixels
+
+    if is_new_figure:
+        plt.show()  # Show both figures in separate windows
+
+    return ax
+
+def draw_fwd_projection_GUMS(omnistereo_model):
+    # TODO: Draw an integrated system as for the HyperCataStereo case
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+#         from mplot3d import axes3d
+    fig = plt.figure()
+    ax_top = fig.add_subplot(211, projection='3d')
+    ax_bot = fig.add_subplot(212, projection='3d')
+
+    draw_fwd_projection_GUM(omnistereo_model.top_model, ax_top)
+    draw_fwd_projection_GUM(omnistereo_model.bot_model, ax_bot)
+
+    plt.show()  # Show both figures as subplots (same window)
 
 def draw_model_mono_vispy(omni_model_mono, finish_drawing=True, view=None, show_grid=False, backend=None):
     '''

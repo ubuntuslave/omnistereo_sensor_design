@@ -208,7 +208,7 @@ def main_demo(is_synthetic=True):
                 # Drawing just the model:
                 from omnistereo.common_plot import draw_omnistereo_model_visvis
                 draw_omnistereo_model_visvis(omnistereo_model, finish_drawing=True, show_grid_box=False, mirror_transparency=0.5, show_reference_frame=True)
-                # common_plot.draw_model_visvis(omnistereo_model.top_model.theoretical_model, finish_drawing=True, show_grid_box=False, show_reference_frame=True)
+                # common_plot.draw_model_mono_visvis(omnistereo_model.top_model.theoretical_model, finish_drawing=True, show_grid_box=False, show_reference_frame=True)
 
             except ImportError:
                 print("VISVIS could not be imported for 3D visualization!")

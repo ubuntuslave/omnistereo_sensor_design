@@ -867,8 +867,8 @@ def get_masked_omni_image(img_input, center_point, outer_radius, inner_radius=0.
 
     if color_RGB is not None:  # Paint the masked area other than black
         background_img = np.zeros_like(masked_img)
-        color_BGR = (color_RGB[2], color_RGB[1], color_RGB[0])
-        background_img[:, :, :] += color_BGR  # Paint the B-G-R channels for OpenCV
+        color_BGR = np.array([color_RGB[2], color_RGB[1], color_RGB[0]], dtype="uint8")
+        background_img[..., :] += color_BGR  # Paint the B-G-R channels for OpenCV
         mask_inv = cv2.bitwise_not(src=mask)
         # Apply the background using the inverted mask
         masked_img = cv2.bitwise_and(src1=background_img, src2=background_img, dst=masked_img, mask=mask_inv)
