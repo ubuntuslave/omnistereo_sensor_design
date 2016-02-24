@@ -42,7 +42,7 @@ import matplotlib as mpl
 from mpldatacursor import datacursor, HighlightingDataCursor
 from sympy import Matrix, ImmutableMatrix
 import os.path as osp
-from omnistereo import common_tools
+from omnistereo.common_tools import load_obj_from_pickle, save_obj_in_pickle, make_sure_path_exists
 
 # pgf_with_rc_fonts = {"pgf.texsystem": "pdflatex"}
 # mpl.rcParams.rotate_to(pgf_with_rc_fonts)
@@ -64,7 +64,8 @@ def init_omnistereo_theoretical(omni_img, radial_bounds_filename, theoretical_pa
     # THEORETICAL VALUES:
     # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
     from omnistereo.cata_hyper_model import PinholeCamera, HyperCata, HyperCataStereo
-    c1, c2, k1, k2, d, r_sys, r_reflex, r_cam = common_tools.get_theoretical_params_from_file(theoretical_params_filename, file_units="cm")
+    from omnistereo.common_tools import get_theoretical_params_from_file
+    c1, c2, k1, k2, d, r_sys, r_reflex, r_cam = get_theoretical_params_from_file(theoretical_params_filename, file_units="cm")
     # Points as homogeneous column vectors:
     Oc = np.array([0, 0, 0, 1]).reshape(4, 1)  # also F1'
     F1 = np.array([0, 0, c1, 1]).reshape(4, 1)  # F1
@@ -113,7 +114,11 @@ def init_omnistereo_theoretical(omni_img, radial_bounds_filename, theoretical_pa
     return theoretical_omni_stereo
 
 
-def main_demo(is_synthetic=True):
+def main_demo():
+    is_synthetic = True
+    model_version = "old"  # Set to "old" for the PUBLISHED params, or "new" for the new one
+    experiment_name = "simple"  # "simple", "VICON", "CVPR", "with_misalignment-4", etc.  # <<<<<- SET For example, "VICON" uses ground truth data, otherwise use "simple"
+
     # HYPERBOLIC Parameters (Used in Publication):
     #===========================================================================
     # k1 = 5.7319  # Unitless
@@ -127,31 +132,29 @@ def main_demo(is_synthetic=True):
     # d = 233.684
     #===========================================================================
     # vvvvvvvvvvvvvvvvvvvvvvv OPTIONS vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-    # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
     load_model_from_file = True  # <<< SETME: to load omnistereo model from a pickle or start anew
     show_panoramic_img = True
     show_3D_model = False
-    get_pointclouds = False
+    get_pointclouds = True
     compute_new_3D_points = True
     dense_cloud = True
     manual_point_selection = False
+    save_pcd_point_cloud = False
 
     # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     # vvvvvvvvvvvvvvvvvvvvvvv SETUP vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
     # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
     data_root = "data"  # The root folder for all data
-    model_version = "old"  # Set to "old" for the PUBLISHED params, or "new" for the new one
     if is_synthetic:
         model_type = "synthetic"
     else:
         model_type = "real"
-    data_path_prefix = osp.join(data_root, model_type, model_version)
-    experiment_name = "office"
-    experiment_path = osp.join(data_path_prefix, experiment_name)  # Pose estimation experiment: Translation on x only by 0, 25 cm and 75 cm (wrt init)
-
+    data_path_prefix = osp.join(data_root, model_type, model_version, experiment_name)
     # For SHOWING OFF: virtual office
-    omni_img_filename_template = osp.join(experiment_path, "office-%s-*.png" % (model_version))  # With PUBLISHED parameters
-    # omni_img_filename_template = osp.join(data_path_prefix, experiment_path, "office" + model_version + "-*.png")  # NEW design
+    scene_name = "scene"
+    scene_path = osp.join(data_path_prefix, scene_name)  # Pose estimation experiment: Translation on x only by 0, 25 cm and 75 cm (wrt init)
+    scene_img_filename_template = osp.join(scene_path, "office-*.png")  # With PUBLISHED parameters
+    # scene_img_filename_template = osp.join(data_path_prefix, scene_path, "office" + model_version + "-*.png")  # NEW design
     img_indices = []  # Choosing a predefined set of images to work with out of the set
     img_index = 0  # <<<<<------ Choosing an arbitrary image to work with out of the set
 
@@ -159,26 +162,36 @@ def main_demo(is_synthetic=True):
     # ------------------------------------------------
     radial_bounds_filename = osp.join(data_path_prefix, "radial_bounds.pkl")
     # ------------------------------------------------
-    points_3D_filename_template = osp.join(experiment_path, "3d_points-" + model_version + "-*.pkl")
+    points_3D_filename_template = osp.join(scene_path, "3d_points-" + model_version + "-*.pkl")
+
+    if get_pointclouds:
+        points_3D_filename_template = "3d_points-*.pkl"
+        features_detected_filename_template = "sparse_correspondences-*.pkl"
+        if dense_cloud:
+            points_3D_path = osp.join(scene_path, "cloud_dense")
+        else:
+            points_3D_path = osp.join(scene_path, "cloud_sparse")
+        make_sure_path_exists(points_3D_path)
+        stereo_tuner_filename = osp.join(scene_path, "stereo_tuner.pkl")
 
     # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     from omnistereo.common_cv import has_opencv, get_images
     opencv_exists = has_opencv()
 
-    omni_images_list = get_images(omni_img_filename_template, indices_list=img_indices, show_images=True)
+    omni_images_list = get_images(scene_img_filename_template, indices_list=img_indices, show_images=True)
     # Read params from file and scale to [mm] units since using [cm] (only those params with dimensions)
     theoretical_params_filename = osp.join(data_root, "parameters-%s.txt" % (model_version))
 
     if load_model_from_file:
-        omnistereo_model = common_tools.load_obj_from_pickle(omnistereo_model_filename)
+        omnistereo_model = load_obj_from_pickle(omnistereo_model_filename)
     else:
-        # omni_img_filename = omni_img_filename_template.replace("*", str(img_index), 1)
+        # omni_img_filename = scene_img_filename_template.replace("*", str(img_index), 1)
         # omni_img = cv2.imread(omni_img_filename, 1)
         omni_img = omni_images_list[img_index]
         omnistereo_model = init_omnistereo_theoretical(omni_img, radial_bounds_filename, theoretical_params_filename, model_version, is_synthetic=is_synthetic)
         pano_width = np.pi * np.linalg.norm(omnistereo_model.bot_model.lowest_img_point - omnistereo_model.bot_model.precalib_params.center_point)
         omnistereo_model.set_current_omni_image(omni_img, pano_width_in_pixels=pano_width, generate_panoramas=True, idx=img_index, view=True)
-        common_tools.save_obj_in_pickle(omnistereo_model, omnistereo_model_filename, locals())
+        save_obj_in_pickle(omnistereo_model, omnistereo_model_filename, locals())
 
     #===========================================================================
     # sanity_check(omnistereo_model)
@@ -189,7 +202,7 @@ def main_demo(is_synthetic=True):
 
     if show_panoramic_img and opencv_exists:
         pano_win_name_prefix = "DEMO - "
-        omnistereo_model.view_all_panoramas(omni_img_filename_template, img_indices, win_name_modifier=pano_win_name_prefix, use_mask=True, mask_color_RGB=(0, 255, 0))
+        omnistereo_model.view_all_panoramas(scene_img_filename_template, img_indices, win_name_modifier=pano_win_name_prefix, use_mask=True, mask_color_RGB=(0, 255, 0))
 
     if show_3D_model:  # Figure 4 (MDPI Sensors journal article)
         try:
@@ -349,15 +362,17 @@ def main_demo(is_synthetic=True):
 
 
     if get_pointclouds:
-        stereo_tuner_filename = osp.join(experiment_path, "stereo_tuner.pkl")
+        stereo_tuner_filename = osp.join(scene_path, "stereo_tuner.pkl")
         from omnistereo.common_plot import compute_pointclouds_simple
-        compute_pointclouds_simple(omnistereo_model, omni_img_filename_template=None, img_indices=[img_index], compute_new_3D_points=compute_new_3D_points, dense_cloud=dense_cloud, manual_point_selection=manual_point_selection, load_stereo_tuner_from_pickle=True, save_pcl=False, pcd_cloud_path=experiment_path, stereo_tuner_filename=stereo_tuner_filename, tune_live=False, save_sparse_features=False, load_sparse_features_from_file=False)
+        compute_pointclouds_simple(omnistereo_model, omni_img_filename_template=None, img_indices=[img_index], compute_new_3D_points=compute_new_3D_points, dense_cloud=dense_cloud, manual_point_selection=manual_point_selection, load_stereo_tuner_from_pickle=True, save_pcl=save_pcd_point_cloud, points_3D_path=points_3D_path, stereo_tuner_filename=stereo_tuner_filename, tune_live=False, save_sparse_features=False, load_sparse_features_from_file=False)
 
 
     from omnistereo.common_cv import clean_up
     clean_up(wait_key_time=0)
 
 def sanity_check(omnistereo_model):
+    from omnistereo.common_tools import unit_test
+
     print("\nSANITY CHECK:")
     x = omnistereo_model.reflex_radius
     y = 0
@@ -367,11 +382,11 @@ def sanity_check(omnistereo_model):
     pixel_bp = np.array([[[868, 480, 1]]])
     print("I got pixel_fp = %s" % (pixel_fp))
     print("but it SHOULD BE close to: %s" % (pixel_bp))
-    common_tools.unit_test(pixel_fp, pixel_bp, decimals=0)
+    unit_test(pixel_fp, pixel_bp, decimals=0)
 
     print("BP test:")
     p1_bp = omnistereo_model.top_model.lift_pixel_to_mirror_surface(pixel_fp)
-    common_tools.unit_test(p1_fp, p1_bp, decimals=3)
+    unit_test(p1_fp, p1_bp, decimals=3)
     print("I got p1_bp = %s" % (p1_bp))
     print("but it SHOULD BE: %s" % (p1_fp))
 
@@ -379,12 +394,13 @@ def sanity_check(omnistereo_model):
     # or
     # Q_fp = omnistereo_model.top_model.project_mirror_point_to_normalized_plane(p1_fp)
     Q_bp = omnistereo_model.top_model.lift_pixel_to_projection_plane(pixel_fp)
-    common_tools.unit_test(Q_fp, Q_bp, decimals=3)
+    unit_test(Q_fp, Q_bp, decimals=3)
 
 
 if __name__ == '__main__':
-    main_demo(is_synthetic=True)
+    main_demo()
 
     # NOT AVAILABLE in omnistereo_sensor_design repo:
-    # common_tools.demo_optimize_FOV()
+    # from omnistereo.common_tools import demo_optimize_FOV
+    # demo_optimize_FOV()
 

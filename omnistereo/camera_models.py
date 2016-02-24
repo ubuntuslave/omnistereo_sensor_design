@@ -452,6 +452,7 @@ class OmniCamModel(object):
         self.precalib_params = CamParams()
         self.current_omni_img = None
         self.panorama = None
+        self.mask = None
 
     def print_params(self, **kwargs):
         self.print_precalib_params()
@@ -932,10 +933,10 @@ class OmniCamModel(object):
                     cv2.imshow("Detected Keypoints - Panorama of Mirror %d" % (self.mirror_number), pano_with_keypts)
                     cv2.waitKey(1)
         else:
-            keypts_detected, descriptors = detector.detectAndCompute(image=pano_img, mask=None)
+            keypts_detected = detector.detect(image=pano_img, mask=None)
+            keypts_detected, descriptors = descriptor.compute(image=pano_img, keypoints=keypts_detected_on_mask)
             keypts_detected_list.append(keypts_detected)
             descriptors_list.append(descriptors)
-
             # keypoints are put in a list of lenght n
             # descriptor are ndarrays of n x desc_size
 
@@ -1041,6 +1042,9 @@ class OmniStereoModel(object):
 #         self.calibrator = calibration.CalibratorStereo(self)
         self.baseline = self.get_baseline()
         self.current_omni_img = None
+        self.construct_new_mask = True
+        self.mask_RGB_color = None
+        self.mask_background_img = None
 
     def set_params(self, **kwargs):
 
@@ -1265,15 +1269,21 @@ class OmniStereoModel(object):
 
         return top_pano_coords, bot_pano_coords, disparities
 
-    def triangulate_from_clicked_points(self, min_disparity=1, max_disparity=0, use_PCL=False, export_to_pcd=True, cloud_path="data", use_LUTs=True,):
+    def triangulate_from_clicked_points(self, min_disparity=1, max_disparity=0, use_PCL=False, export_to_pcd=True, cloud_path="data", cloud_index=None, use_LUTs=True,):
+        '''
+        @param cloud_index: used for saving identifiable point clouds.
+        '''
         top_pano_points_coords, bot_pano_points_coords, pano_disparities = self.get_correspondences_from_clicked_points(min_disparity=min_disparity, max_disparity=max_disparity)  # For testing disparity matches purposes
         az1, el1 = self.top_model.panorama.get_direction_angles_from_pixel_pano(top_pano_points_coords, use_LUTs=use_LUTs)
         az2, el2 = self.bot_model.panorama.get_direction_angles_from_pixel_pano(bot_pano_points_coords, use_LUTs=use_LUTs)
         # Get XYZ from triangulation and put into some cloud
         points_3D_homo = self.get_triangulated_point_from_direction_angles(dir_angs_top=(az1, el1), dir_angs_bot=(az2, el2), use_midpoint_triangulation=False)
-        return self.generate_point_clouds(points_3D_homo, top_pano_points_coords, use_PCL=use_PCL, export_to_pcd=export_to_pcd, cloud_path=cloud_path)
+        return self.generate_point_clouds(points_3D_homo, top_pano_points_coords, use_PCL=use_PCL, export_to_pcd=export_to_pcd, cloud_path=cloud_path, cloud_index=cloud_index)
 
-    def triangulate_from_depth_map(self, min_disparity=1, max_disparity=0, use_PCL=False, export_to_pcd=True, cloud_path="data", use_LUTs=True, roi_cols=None, use_midpoint_triangulation=False):
+    def triangulate_from_depth_map(self, min_disparity=1, max_disparity=0, use_PCL=False, export_to_pcd=True, cloud_path="data", use_LUTs=True, roi_cols=None, use_midpoint_triangulation=False, cloud_index=None):
+        '''
+        @param cloud_index: used for saving identifiable point clouds.
+        '''
         # Get matching pairs
         ref_points_uv_coords = np.transpose(np.indices(self.disparity_map.shape[::-1]), (1, 2, 0))
         top_pano_points_coords, bot_pano_points_coords, pano_disparities = self.resolve_pano_correspondences_from_disparity_map(ref_points_uv_coords, min_disparity=min_disparity, max_disparity=max_disparity, roi_cols=roi_cols)
@@ -1290,10 +1300,11 @@ class OmniStereoModel(object):
         # Get XYZ from triangulation and put into some cloud
         points_3D_homo = self.get_triangulated_point_from_direction_angles(dir_angs_top=(az1, el1), dir_angs_bot=(az2, el2), use_midpoint_triangulation=use_midpoint_triangulation)
 
-        return self.generate_point_clouds(points_3D_homo, top_pano_points_coords, use_PCL=use_PCL, export_to_pcd=export_to_pcd, cloud_path=cloud_path)
+        return self.generate_point_clouds(points_3D_homo, top_pano_points_coords, use_PCL=use_PCL, export_to_pcd=export_to_pcd, cloud_path=cloud_path, cloud_index=cloud_index)
 
-    def generate_point_clouds(self, xyz_points, pano_ref_uv_coords, rgb_colors=None, use_PCL=False, export_to_pcd=True, cloud_path="data"):
+    def generate_point_clouds(self, xyz_points, pano_ref_uv_coords, rgb_colors=None, use_PCL=False, export_to_pcd=True, cloud_path="data", cloud_index=None):
         '''
+        @param cloud_index: used for saving identifiable point clouds.
         @param rgb_colors: An numpy array of RGB colors can be optionally passed. This is useful in case of experimenting with spartse features where individual points must be distinguish from each other.
         '''
         # set RGB info to complimentary cloud
@@ -1332,8 +1343,12 @@ class OmniStereoModel(object):
             if export_to_pcd:
                 from omnistereo.common_tools import make_sure_path_exists
                 make_sure_path_exists(cloud_path)  # This creates the path if necessary
-                pcd_xyz_filename = "%s/XYZ.pcd" % (cloud_path)
-                pcd_rgb_filename = "%s/RGB.pcd" % (cloud_path)
+                if cloud_index is None:
+                    cloud_id = ""
+                else:
+                    cloud_id = "-%d" % (cloud_index)
+                pcd_xyz_filename = "%s/XYZ%s.pcd" % (cloud_path, cloud_id)
+                pcd_rgb_filename = "%s/RGB%s.pcd" % (cloud_path, cloud_id)
                 # Export the 2 pointclouds to PCD files
                 pcl.save(cloud=xyz_cloud, path=pcd_xyz_filename, format="pcd", binary=False)
                 print("Saved XYZ cloud to %s" % pcd_xyz_filename)
@@ -1448,7 +1463,16 @@ class OmniStereoModel(object):
 
         for i in img_indices:
             try:
-                self.generate_panorama_pair(omni_images[i], idx=i, view=True, win_name_modifier=win_name_modifier)
+                #===============================================================
+                # from time import process_time  # , perf_counter
+                # start_time = process_time()
+                #===============================================================
+                self.generate_panorama_pair(omni_images[i], idx=i, view=True, win_name_modifier=win_name_modifier, use_mask=use_mask, border_RGB_color=mask_color_RGB)
+                #===============================================================
+                # end_time = process_time()
+                # time_ellapsed_1 = end_time - start_time
+                # print("Time elapsed: {time:.8f} seconds".format(time=time_ellapsed_1))
+                #===============================================================
             except:
                 warnings.warn("Image index %d not found at %s" % (i, __name__))
 
@@ -1524,57 +1548,64 @@ class OmniStereoModel(object):
         if omni_img is None:
             omni_img = self.current_omni_img
 
-        center_point_top = self.top_model.precalib_params.center_point
-        center_point_bottom = self.bot_model.precalib_params.center_point
-        r_inner_top = self.top_model.inner_img_radius
-        r_outer_top = self.top_model.outer_img_radius
-        r_inner_bottom = self.bot_model.inner_img_radius
-        r_outer_bottom = self.bot_model.outer_img_radius
+        # Small performance improvement by only generating masks if needed. Now the masks are stored for reusability!
+        if self.construct_new_mask:
+            # TOP:
+            center_point_top = self.top_model.precalib_params.center_point
+            center_point_bottom = self.bot_model.precalib_params.center_point
+            r_inner_top = self.top_model.inner_img_radius
+            r_outer_top = self.top_model.outer_img_radius
+            r_inner_bottom = self.bot_model.inner_img_radius
+            r_outer_bottom = self.bot_model.outer_img_radius
+            # circle centers
+            center_top = (int(center_point_top[0]), int(center_point_top[1]))
+            center_bot = (int(center_point_bottom[0]), int(center_point_bottom[1]))
+            mask_top = np.zeros(omni_img.shape[0:2], dtype=np.uint8)  # Black, single channel mask
+            # Paint outer perimeter:
+            cv2.circle(mask_top, center_top, int(r_outer_top), (255, 255, 255), -1, 8, 0)
+            # Paint inner bound for top (as the union of the two inner/outer masks)
+            if r_inner_top > 0:
+                cv2.circle(mask_top, center_top, int(r_inner_top), (0, 0, 0), -1, 8, 0)
+                if r_outer_bottom > 0:
+                    cv2.circle(mask_top, center_bot, int(r_outer_bottom), (0, 0, 0), -1, 8, 0)
+            self.top_model.mask = mask_top  # Save mask as property
 
-        # circle centers
-        center_top = (int(center_point_top[0]), int(center_point_top[1]))
-        center_bot = (int(center_point_bottom[0]), int(center_point_bottom[1]))
-        if color_RGB is not None:  # Paint the masked area other than black
-            color_BGR = (color_RGB[2], color_RGB[1], color_RGB[0])
-            background_img = np.zeros_like(omni_img)
-            background_img[:, :, :] += np.array(color_BGR, dtype="uint8")  # Paint the B-G-R channels for OpenCV
+            # BOTTOM:
+            # Paint 2 black masks:
+            mask_bottom_outer = np.zeros(omni_img.shape[0:2], dtype=np.uint8)  # Black, single channel mask
+            mask_top_inner = np.zeros(omni_img.shape[0:2], dtype=np.uint8)  # Black, single channel mask
+            cv2.circle(mask_bottom_outer, center_bot, int(r_outer_bottom), (255, 255, 255), -1, 8, 0)
+            cv2.circle(mask_top_inner, center_top, int(r_inner_top), (255, 255, 255), -1, 8, 0)
+            # Paint the outer bound mask for the bottom (as the intersection of the two inner/outer masks)
+            mask_bottom = np.zeros(omni_img.shape)
+            mask_bottom = cv2.bitwise_and(src1=mask_bottom_outer, src2=mask_top_inner, dst=mask_bottom, mask=None)
+            # Paint the black inner bound for the bottom
+            cv2.circle(mask_bottom, center_bot, int(r_inner_bottom), (0, 0, 0), -1, 8, 0)
+            self.bot_model.mask = mask_bottom
 
-
-        # TOP:
-        mask_top = np.zeros(omni_img.shape[0:2], dtype=np.uint8)  # Black, single channel mask
-        # Paint outer perimeter:
-        cv2.circle(mask_top, center_top, int(r_outer_top), (255, 255, 255), -1, 8, 0)
-        # Paint inner bound for top (as the union of the two inner/outer masks)
-        if r_inner_top > 0:
-            cv2.circle(mask_top, center_top, int(r_inner_top), (0, 0, 0), -1, 8, 0)
-            if r_outer_bottom > 0:
-                cv2.circle(mask_top, center_bot, int(r_outer_bottom), (0, 0, 0), -1, 8, 0)
-        # Apply mask
+        # Apply TOP mask
         masked_img_top = np.zeros(omni_img.shape)
-        masked_img_top = cv2.bitwise_and(src1=omni_img, src2=omni_img, dst=masked_img_top, mask=mask_top)
-        if color_RGB is not None:  # Paint the masked area other than black
-            mask_top_inv = cv2.bitwise_not(src=mask_top)
-            # Apply the background using the inverted mask
-            masked_img_top = cv2.bitwise_and(src1=background_img, src2=background_img, dst=masked_img_top, mask=mask_top_inv)
-
-        # BOTTOM:
-        # Paint 2 white masks:
-        mask_bottom_outer = np.zeros(omni_img.shape[0:2], dtype=np.uint8)  # Black, single channel mask
-        mask_top_inner = np.zeros(omni_img.shape[0:2], dtype=np.uint8)  # Black, single channel mask
-        cv2.circle(mask_bottom_outer, center_bot, int(r_outer_bottom), (255, 255, 255), -1, 8, 0)
-        cv2.circle(mask_top_inner, center_top, int(r_inner_top), (255, 255, 255), -1, 8, 0)
-        # Paint the outer bound mask for the bottom (as the intersection of the two inner/outer masks)
-        mask_bottom = np.zeros(omni_img.shape)
-        mask_bottom = cv2.bitwise_and(src1=mask_bottom_outer, src2=mask_top_inner, dst=mask_bottom, mask=None)
-        # Paint the black inner bound for the bottom
-        cv2.circle(mask_bottom, center_bot, int(r_inner_bottom), (0, 0, 0), -1, 8, 0)
-        # Apply mask
+        masked_img_top = cv2.bitwise_and(src1=omni_img, src2=omni_img, dst=masked_img_top, mask=self.top_model.mask)
+        # Apply BOTTOM mask
         masked_img_bottom = np.zeros(omni_img.shape)
-        masked_img_bottom = cv2.bitwise_and(src1=omni_img, src2=omni_img, dst=masked_img_bottom, mask=mask_bottom)
+        masked_img_bottom = cv2.bitwise_and(src1=omni_img, src2=omni_img, dst=masked_img_bottom, mask=self.bot_model.mask)
+
         if color_RGB is not None:  # Paint the masked area other than black
-            mask_bottom_inv = cv2.bitwise_not(src=mask_bottom)
+            if color_RGB != self.mask_RGB_color:
+                self.mask_RGB_color = color_RGB
+                color_BGR = (color_RGB[2], color_RGB[1], color_RGB[0])
+                self.mask_background_img = np.zeros_like(omni_img)
+                self.mask_background_img[:, :, :] += np.array(color_BGR, dtype="uint8")  # Paint the B-G-R channels for OpenCV
+
+            mask_top_inv = cv2.bitwise_not(src=self.top_model.mask)
             # Apply the background using the inverted mask
-            masked_img_bottom = cv2.bitwise_and(src1=background_img, src2=background_img, dst=masked_img_bottom, mask=mask_bottom_inv)
+            masked_img_top = cv2.bitwise_and(src1=self.mask_background_img, src2=self.mask_background_img, dst=masked_img_top, mask=mask_top_inv)
+
+            mask_bottom_inv = cv2.bitwise_not(src=self.bot_model.mask)
+            # Apply the background using the inverted mask
+            masked_img_bottom = cv2.bitwise_and(src1=self.mask_background_img, src2=self.mask_background_img, dst=masked_img_bottom, mask=mask_bottom_inv)
+
+        self.construct_new_mask = False  # Clear mask construction flag
 
         # Show radial boundaries
         if view:

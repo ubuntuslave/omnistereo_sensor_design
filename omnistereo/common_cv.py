@@ -1162,6 +1162,7 @@ def create_rectangular_mask(img_input, points, preview=False):
     return masked_img
 
 def extract_circular_bound(omni_img, win_name="Circle Extraction", center_coords=None, radius=None, ring_fiducials_radii=[]):
+    print("USER: attempting " + win_name + "...")
     cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
     win_handler = PointClicker(win_name)
     if omni_img.ndim == 3:

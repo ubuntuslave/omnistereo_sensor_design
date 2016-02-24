@@ -185,7 +185,7 @@ def vis_omnistereo_and_grids(omni_model, T_W_wrt_C_list, points_wrt_pattern, che
 
 do_next_frame = False  # Global variable used during 3D Point Cloud visualization
 
-def compute_pointclouds_simple(omnistereo_model, omni_img_filename_template=None, img_indices=[], compute_new_3D_points=True, points_3D_filename_template="3d_points-*.pkl", features_detected_filename_template="feature_correspondences-*.pkl", dense_cloud=True, manual_point_selection=False, load_stereo_tuner_from_pickle=False, save_pcl=False, pcd_cloud_path="data", stereo_tuner_filename="stereo_tuner.pkl", tune_live=False, save_sparse_features=False, load_sparse_features_from_file=False):
+def compute_pointclouds_simple(omnistereo_model, omni_img_filename_template=None, img_indices=[], compute_new_3D_points=True, points_3D_path="data", points_3D_filename_template="3d_points-*.pkl", features_detected_filename_template="feature_correspondences-*.pkl", dense_cloud=True, manual_point_selection=False, load_stereo_tuner_from_pickle=False, save_pcl=False, stereo_tuner_filename="stereo_tuner.pkl", tune_live=False, save_sparse_features=False, load_sparse_features_from_file=False):
     '''
     This simple function doesn't transform the pose of the cloud frame with respect to the scene
     '''
@@ -195,6 +195,9 @@ def compute_pointclouds_simple(omnistereo_model, omni_img_filename_template=None
     from omnistereo.common_tools import save_obj_in_pickle, load_obj_from_pickle
     from omnistereo.camera_models import FeatureMatcher
     from omnistereo.common_cv import get_images, get_feature_matches_data_from_files
+
+    from os.path import join
+    complete_points_3D_filename_template = join(points_3D_path, points_3D_filename_template)
     # 3D Visualization (Setup)
     import vispy.scene
     from vispy.scene import visuals
@@ -256,7 +259,7 @@ def compute_pointclouds_simple(omnistereo_model, omni_img_filename_template=None
 
         detection_method = "AGAST"  # Best so far with "BRISK" as its descriptor
         matching_type = "BF"
-        features_detected_filename_template = features_detected_filename_template.replace("*", detection_method + "_" + matching_type + "-*", 1)
+        features_detected_filename_template = join(points_3D_path, features_detected_filename_template.replace("*", detection_method + "_" + matching_type + "-*", 1))
         if load_sparse_features_from_file:
             from cv2 import KeyPoint
             feature_matches_data_list = get_feature_matches_data_from_files(features_detected_filename_template, indices_list=img_indices)
@@ -278,15 +281,15 @@ def compute_pointclouds_simple(omnistereo_model, omni_img_filename_template=None
     # Running multiple views (as visualizing all point clouds)
     for idx in img_indices:
         omnistereo_model.set_current_omni_image(omni_images_list[idx], generate_panoramas=False, view=False, apply_pano_mask=True, mask_RGB=(0, 0, 0))  # Using Black pano mask
-        points_3D_filename = points_3D_filename_template.replace("*", str(idx), 1)
+        points_3D_filename = complete_points_3D_filename_template.replace("*", str(idx), 1)
         if compute_new_3D_points:
             if dense_cloud:
                 omnistereo_model.get_depth_map_from_panoramas(method="sgbm", use_cropped_panoramas=False, show=True, load_stereo_tuner_from_pickle=load_stereo_tuner_from_pickle, stereo_tuner_filename=stereo_tuner_filename, tune_live=tune_live)
                 # Generate 3D point cloud
                 if manual_point_selection:
-                    xyz_points, rgb_points = omnistereo_model.triangulate_from_clicked_points(min_disparity=min_disp, max_disparity=max_disp, use_PCL=save_pcl, export_to_pcd=False, cloud_path=pcd_cloud_path, use_LUTs=False)
+                    xyz_points, rgb_points = omnistereo_model.triangulate_from_clicked_points(min_disparity=min_disp, max_disparity=max_disp, use_PCL=save_pcl, export_to_pcd=False, cloud_path=points_3D_path, use_LUTs=False, cloud_index=idx)
                 else:
-                    xyz_points, rgb_points = omnistereo_model.triangulate_from_depth_map(min_disparity=min_disp, max_disparity=max_disp, use_PCL=save_pcl, export_to_pcd=True, cloud_path=pcd_cloud_path, use_LUTs=False, use_midpoint_triangulation=True)
+                    xyz_points, rgb_points = omnistereo_model.triangulate_from_depth_map(min_disparity=min_disp, max_disparity=max_disp, use_PCL=save_pcl, export_to_pcd=True, cloud_path=points_3D_path, use_LUTs=False, use_midpoint_triangulation=True, cloud_index=idx)
                     # NOTE: From the following TIME analysis, we observe using the midpoint triangulation method is slightly slower than the naive approach!
                     #===========================================================
                     # from time import process_time
@@ -395,7 +398,7 @@ def compute_pointclouds_simple(omnistereo_model, omni_img_filename_template=None
 
                 # Just show the resulting matches:
                 _, _ = filter_correspondences_manually(train_img=omnistereo_model.top_model.panorama.panoramic_img, query_img=omnistereo_model.bot_model.panorama.panoramic_img, train_kpts=matched_kpts_top, query_kpts=matched_kpts_bot, colors_RGB=random_colors_RGB, first_row_to_crop_bottom=first_row_to_crop_bottom, do_filtering=False)
-                points_3D, rgb_points = omnistereo_model.generate_point_clouds(xyz_points, matched_m_top, rgb_colors=random_colors_RGB, use_PCL=save_pcl, export_to_pcd=save_pcl, cloud_path=pcd_cloud_path + "/sparse")
+                points_3D, rgb_points = omnistereo_model.generate_point_clouds(xyz_points, matched_m_top, rgb_colors=random_colors_RGB, use_PCL=save_pcl, export_to_pcd=save_pcl, cloud_path=points_3D_path, cloud_index=idx)
                 xyz_points = points_3D[..., :3]  # In case they are homogeneous
                 # TODO: Track inliers on second frame
 
@@ -429,7 +432,7 @@ def compute_pointclouds_simple(omnistereo_model, omni_img_filename_template=None
         do_next_frame = False  # Update global variable
 
 
-def compute_pointclouds(omnistereo_model, poses_filename=None, omni_img_filename_template=None, img_indices=[], compute_new_3D_points=True, points_3D_filename_template="3d_points-*.pkl", features_detected_filename_template="feature_correspondences-*.pkl", dense_cloud=True, manual_point_selection=False, show_3D_reference_cyl=False, load_stereo_tuner_from_pickle=False, save_pcl=False, pcd_cloud_path="data", stereo_tuner_filename="stereo_tuner.pkl", tune_live=False, save_sparse_features=False, load_sparse_features_from_file=False):
+def compute_pointclouds(omnistereo_model, poses_filename=None, omni_img_filename_template=None, img_indices=[], compute_new_3D_points=True, save_3D_points=False, points_3D_path="data", points_3D_filename_template="3d_points-*.pkl", features_detected_filename_template="feature_correspondences-*.pkl", dense_cloud=True, manual_point_selection=False, show_3D_reference_cyl=False, load_stereo_tuner_from_pickle=False, save_pcl=False, stereo_tuner_filename="stereo_tuner.pkl", tune_live=False, save_sparse_features=False, load_sparse_features_from_file=False):
     global do_next_frame
     from omnistereo import common_tools
     from omnistereo.camera_models import FeatureMatcher
@@ -440,6 +443,9 @@ def compute_pointclouds(omnistereo_model, poses_filename=None, omni_img_filename
     from vispy.scene import visuals
     from vispy import use, app
     use(app="glfw", gl="gl2")
+
+    from os.path import join
+    complete_points_3D_filename_template = join(points_3D_path, points_3D_filename_template)
 
     #
     # Make a canvas and add simple view
@@ -505,13 +511,13 @@ def compute_pointclouds(omnistereo_model, poses_filename=None, omni_img_filename
         vis_pt_size = 5
     else:
         # Visualize inlier matches
-        from  omnistereo_model.common_cv import filter_correspondences_manually
+        from  omnistereo.common_cv import filter_correspondences_manually
         vis_pt_size = 10
         first_row_to_crop_bottom = 20  # <<<< SETME (TEMP) For Journal Paper (Sensors)
 
         detection_method = "AGAST"  # Best so far with "BRISK" as its descriptor
         matching_type = "BF"
-        features_detected_filename_template = features_detected_filename_template.replace("*", detection_method + "_" + matching_type + "-*", 1)
+        features_detected_filename_template = join(points_3D_path, features_detected_filename_template.replace("*", detection_method + "_" + matching_type + "-*", 1))
         if load_sparse_features_from_file:
             from cv2 import KeyPoint
             feature_matches_data_list = get_feature_matches_data_from_files(features_detected_filename_template, indices_list=img_indices)
@@ -537,10 +543,10 @@ def compute_pointclouds(omnistereo_model, poses_filename=None, omni_img_filename
 
     # Running multiple views (as visualizing all point clouds)
     for idx in img_indices:
-        # TODO: speed up this setting?
-        omnistereo_model.set_current_omni_image(omni_images_list[idx], pano_width_in_pixels=pano_width, generate_panoramas=True, view=False, apply_pano_mask=True, mask_RGB=(0, 0, 0))  # Using Black pano mask
+        # ATTENTION: becareful if generating panoramas here, the masks will be destroyed.
+        omnistereo_model.set_current_omni_image(omni_images_list[idx], pano_width_in_pixels=pano_width, generate_panoramas=False, view=False, apply_pano_mask=True, mask_RGB=(0, 0, 0))  # Using Black pano mask
 
-        points_3D_filename = points_3D_filename_template.replace("*", str(idx), 1)
+        points_3D_filename = complete_points_3D_filename_template.replace("*", str(idx), 1)
 
         if compute_new_3D_points:
             if dense_cloud:
@@ -549,9 +555,9 @@ def compute_pointclouds(omnistereo_model, poses_filename=None, omni_img_filename
                 #===========================================================================
                 # Generate 3D point cloud
                 if manual_point_selection:
-                    xyz_points, rgb_points = omnistereo_model.triangulate_from_clicked_points(min_disparity=min_disp, max_disparity=max_disp, use_PCL=save_pcl, export_to_pcd=False, cloud_path=pcd_cloud_path, use_LUTs=False)
+                    xyz_points, rgb_points = omnistereo_model.triangulate_from_clicked_points(min_disparity=min_disp, max_disparity=max_disp, use_PCL=save_pcl, export_to_pcd=False, cloud_path=points_3D_path, use_LUTs=False, cloud_index=idx)
                 else:
-                    xyz_points, rgb_points = omnistereo_model.triangulate_from_depth_map(min_disparity=min_disp, max_disparity=max_disp, use_PCL=save_pcl, export_to_pcd=True, cloud_path=pcd_cloud_path, use_LUTs=False)
+                    xyz_points, rgb_points = omnistereo_model.triangulate_from_depth_map(min_disparity=min_disp, max_disparity=max_disp, use_PCL=save_pcl, export_to_pcd=True, cloud_path=points_3D_path, use_LUTs=False, cloud_index=idx)
             else:
                 view.children[0].children.remove(scatter)  # TEMP: Clear point makers (to visualize each frame's features only) NOT cummulative
                 if load_sparse_features_from_file:
@@ -641,16 +647,14 @@ def compute_pointclouds(omnistereo_model, poses_filename=None, omni_img_filename
                         matched_kpts_top_serial[i] = (k_top.pt, k_top.size, k_top.angle, k_top.response, k_top.octave, k_top.class_id)
                         matched_kpts_bot_serial[i] = (k_bot.pt, k_bot.size, k_bot.angle, k_bot.response, k_bot.octave, k_bot.class_id)
 
-                    common_tools.save_obj_in_pickle([(matched_m_top, matched_kpts_top_serial, matched_desc_top), (matched_m_bot, matched_kpts_bot_serial, matched_desc_bot), random_colors_RGB], features_data_filename, locals())
+                    if save_sparse_features:
+                        common_tools.save_obj_in_pickle([(matched_m_top, matched_kpts_top_serial, matched_desc_top), (matched_m_bot, matched_kpts_bot_serial, matched_desc_bot), random_colors_RGB], features_data_filename, locals())
 
                 # Just show the resulting matches:
                 _, _ = filter_correspondences_manually(train_img=omnistereo_model.top_model.panorama.panoramic_img, query_img=omnistereo_model.bot_model.panorama.panoramic_img, train_kpts=matched_kpts_top, query_kpts=matched_kpts_bot, colors_RGB=random_colors_RGB, first_row_to_crop_bottom=first_row_to_crop_bottom, do_filtering=False)
-                points_3D, rgb_points = omnistereo_model.generate_point_clouds(xyz_points, matched_m_top, rgb_colors=random_colors_RGB, use_PCL=save_pcl, export_to_pcd=save_pcl, cloud_path=pcd_cloud_path + "/sparse")
+                points_3D, rgb_points = omnistereo_model.generate_point_clouds(xyz_points, matched_m_top, rgb_colors=random_colors_RGB, use_PCL=save_pcl, export_to_pcd=save_pcl, cloud_path=points_3D_path, cloud_index=idx)
                 xyz_points = points_3D  # In case they are homogeneous
                 # TODO: Track inliers on second frame
-
-                if save_sparse_features:
-                    common_tools.save_obj_in_pickle([xyz_points, rgb_points], points_3D_filename, locals())
 
                 if last_desc_top is not None:
                     # Perform match between top panoramic images from the current time frame and previous frame.
@@ -659,6 +663,9 @@ def compute_pointclouds(omnistereo_model, poses_filename=None, omni_img_filename
                 last_key_pts_top = matched_kpts_top
                 last_desc_top = matched_desc_top
                 last_m_top = matched_m_top
+
+            if save_3D_points:
+                common_tools.save_obj_in_pickle([xyz_points, rgb_points], points_3D_filename, locals())
 
         else:
             [xyz_points, rgb_points] = common_tools.load_obj_from_pickle(points_3D_filename)
