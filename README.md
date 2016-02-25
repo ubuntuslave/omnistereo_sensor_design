@@ -63,10 +63,8 @@ However, it *may fail* to find a "suitable threading library available." If so, 
 
 #### Optional requirement:
     
-Install `Qt4` from Homebrew. Then, to build `OpenCV` with `Qt4`, try without the GUI configuration:  
+Install `Qt4` from Homebrew. Then, to build `OpenCV` with `Qt4` and `Python 3.5`, try without the GUI configuration:  
     
-    $ cmake -DWITH_QT=4 ../
-
     $ cmake -D CMAKE_BUILD_TYPE=RELEASE -D CMAKE_INSTALL_PREFIX=/usr/local -DWITH_QT=4 -D BUILD_opencv_python3=ON -D PYTHON3_EXECUTABLE=/usr/local/bin/python3 -D PYTHON3_PACKAGES_PATH=lib/python3.5/site-packages -D PYTHON3_LIBRARY=/usr/local/Cellar/python3/3.5.1/Frameworks/Python.framework/Versions/3.5/lib/libpython3.5m.dylib -D PYTHON3_INCLUDE_DIR=/usr/local/Cellar/python3/3.5.1/Frameworks/Python.framework/Versions/3.5/include/python3.5m -D INSTALL_C_EXAMPLES=OFF -D INSTALL_PYTHON_EXAMPLES=OFF -D BUILD_EXAMPLES=OFF -D OPENCV_EXTRA_MODULES_PATH=/Users/carlos/src/opencv_contrib/modules -D BUILD_opencv_viz=OFF ..
 
 Then, install [PyQT](http://www.riverbankcomputing.co.uk/software/pyqt/intro)
