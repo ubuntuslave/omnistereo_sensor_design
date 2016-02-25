@@ -1,3 +1,7 @@
+# IDE stuff
+.project
+.settings
+
 # Python stuff
 *.pyc
 __init__.py
@@ -16,3 +20,13 @@ code.py
 *.ncb
 *.user
 *.tmp
+
+# Ignore some data
+data/omnistereo_symbolic.pkl
+data/real/old/VICON
+data/real/old/simple/calibration
+data/real/old/simple/scene/cloud*
+data/synthetic/new
+data/synthetic/old/simple/calibration
+data/real/new
+data/synthetic/old/simple/scene/cloud
