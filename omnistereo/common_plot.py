@@ -1269,8 +1269,6 @@ def draw_omnistereo_model(omnistereo_model, ax=None, proj_plane_scale=20, show_l
     @param proj_plane_scale: The scale for drawin the projection plane. If 0 is passed, then planes are not drawn.
     @return the drawn axis corresponding to the parameter ax of the figure
     '''
-    import matplotlib.pyplot as plt
-#             import matplotlib as mpl
     from mpl_toolkits.mplot3d import Axes3D
     if ax == None:
 #             from mplot3d import axes3d
@@ -1364,8 +1362,6 @@ def draw_fwd_projection(omni_model, ax=None):
     '''
     @return the drawn axis corresponding to the parameter ax of the figure
     '''
-    import matplotlib.pyplot as plt
-
     if ax == None:
         fig = plt.figure()
         ax = fig.add_subplot(111)
@@ -1574,7 +1570,6 @@ def draw_fwd_projection_GUM(model, ax=None):
         is_new_figure = True
         from mpl_toolkits.mplot3d import Axes3D  # To be run from the command line
 #             from mplot3d import axes3d
-        import matplotlib.pyplot as plt
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
 
@@ -1648,7 +1643,6 @@ def draw_fwd_projection_GUM(model, ax=None):
 
 def draw_fwd_projection_GUMS(omnistereo_model):
     # TODO: Draw an integrated system as for the HyperCataStereo case
-    import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
 #         from mplot3d import axes3d
     fig = plt.figure()
