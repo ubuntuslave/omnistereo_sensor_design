@@ -2,6 +2,9 @@
 .project
 .settings
 
+# Markdown garbage:
+.*.md.html
+
 # Python stuff
 *.pyc
 __init__.py
