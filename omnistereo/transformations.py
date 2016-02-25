@@ -2153,7 +2153,7 @@ def test_pose_averaging():
     print("Rotation euler angles =", numpy.rad2deg(angles_avg_3), "degrees. Translation =", trans_avg_3, "mm")
     print("Rotation quaternions =", quaternion_from_matrix(matrix=pose_avg_3, isprecise=False))
 
-    from common_plot import draw_frame_poses
+    from omnistereo.common_plot import draw_frame_poses
     draw_frame_poses(pose_list=poses_list_2 + [pose_avg_2])
 
 # _import_module('_transformations')

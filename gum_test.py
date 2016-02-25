@@ -52,8 +52,8 @@ import warnings
 import configparser
 import numpy as np
 import cv2
-from omnistereo import common_tools
 import os.path as osp
+from omnistereo.common_tools import load_obj_from_pickle, save_obj_in_pickle, make_sure_path_exists
 
 def test_direction_angles(pano_top, pano_bot):
     # Testing row from elevation computation:
@@ -122,7 +122,7 @@ def run_single_calibration(omni_model, calibrator, is_synthetic, chessboard_para
     from omnistereo import sensor_evaluation
 
     if load_calibrated_model_from_file:
-        calibrator = common_tools.load_obj_from_pickle(calibrator_filename)
+        calibrator = load_obj_from_pickle(calibrator_filename)
     else:
         app = calibrator.calibrate_mono(omni_model, chessboard_indices=img_indices, visualize=visualize, only_extrinsics=False, only_grids=False, only_C_wrt_M_tz=False, only_translation_params=False, normalize=False, return_jacobian=True, do_radial_bounds_refinement=do_radial_bounds_refinement, do_single_trial=True)
 
@@ -145,7 +145,7 @@ def run_single_calibration(omni_model, calibrator, is_synthetic, chessboard_para
     pano_width = np.pi * radial_height
     omni_img = calibrator.estimated_omni_model.current_omni_img
     calibrator.estimated_omni_model.set_omni_image(omni_img, pano_width_in_pixels=pano_width, idx=-1, generate_panorama=True, view=True)
-    common_tools.save_obj_in_pickle(calibrator, calibrator_filename, locals())
+    save_obj_in_pickle(calibrator, calibrator_filename, locals())
 
     # CHECKME URGENT: Panoramas on evaluation seem way off even for detected points. I think the tz offsets (adjustments are ignored) when doing the eval wrt mirror focus
     print("Pose of [C] wrt [M]: Translation on z-axis: %f [%s]   VS  theoretical: %f [%s]" % (calibrator.estimated_omni_model.F[2, 0], calibrator.estimated_omni_model.units, calibrator.original_model.F[2, 0], calibrator.original_model.units))
@@ -181,7 +181,7 @@ def run_omnistereo_calibration(gums_uncalibrated, omnistereo_calibrator, is_synt
         app = None
 
     if load_calibrated_model_from_file:
-        omnistereo_calibrator = common_tools.load_obj_from_pickle(calibrator_filename)
+        omnistereo_calibrator = load_obj_from_pickle(calibrator_filename)
         gums_calibrated = omnistereo_calibrator.estimated_omnistereo_model
     else:
         if use_gums_coupled_calibration_method:
@@ -219,7 +219,7 @@ def run_omnistereo_calibration(gums_uncalibrated, omnistereo_calibrator, is_synt
         gums_calibrated = omnistereo_calibrator.estimated_omnistereo_model
         pano_width = np.pi * np.linalg.norm(gums_calibrated.bot_model.lowest_img_point - gums_calibrated.bot_model.precalib_params.center_point)
         omnistereo_calibrator.estimated_omnistereo_model.set_current_omni_image(omni_img, pano_width_in_pixels=pano_width, generate_panoramas=True, idx=-1, view=True)
-        common_tools.save_obj_in_pickle(omnistereo_calibrator, calibrator_filename, locals())
+        save_obj_in_pickle(omnistereo_calibrator, calibrator_filename, locals())
 
     # EVALUATE forward projection error of theoretical model ONLY when given Ground Truth poses
     theor_proj_img = None
@@ -239,12 +239,13 @@ def run_omnistereo_calibration(gums_uncalibrated, omnistereo_calibrator, is_synt
         # Set new radii values
         omnistereo_calibrator.estimated_omnistereo_model.set_params(inner_radius_bottom=inner_radius_bottom, outer_radius_bottom=outer_radius_bottom, inner_radius_top=inner_radius_top, outer_radius_top=outer_radius_top)
         gums_calibrated = omnistereo_calibrator.estimated_omnistereo_model
+        # Set the flag for mask regeneration after this bounds change.
+        omnistereo_calibrator.estimated_omnistereo_model.construct_new_mask = True
         # Again, compute new panoramas
         pano_width = np.pi * np.linalg.norm(gums_calibrated.bot_model.lowest_img_point - gums_calibrated.bot_model.precalib_params.center_point)
-        omnistereo_calibrator.estimated_omnistereo_model.set_current_omni_image(omni_img, pano_width_in_pixels=pano_width, generate_panoramas=True, idx=-1, view=True)
+        omnistereo_calibrator.estimated_omnistereo_model.set_current_omni_image(omni_img, pano_width_in_pixels=pano_width, generate_panoramas=True, apply_pano_mask=True, idx=-1, view=True)
         # And save in pickle
-        common_tools.save_obj_in_pickle(omnistereo_calibrator, calibrator_filename, locals())
-
+        save_obj_in_pickle(omnistereo_calibrator, calibrator_filename, locals())
 
     gums_calibrated = omnistereo_calibrator.estimated_omnistereo_model
     print("TOP:")
@@ -288,7 +289,7 @@ def run_omnistereo_calibration(gums_uncalibrated, omnistereo_calibrator, is_synt
         omnistereo_calibrator.T_G_wrt_C_list_for_calibration = T_Ggt_wrt_C_array[img_indices]
 #         omnistereo_calibrator.set_true_chessboard_pose(gums_calibrated, chessboard_params_filename, input_units="cm", chessboard_indices=img_indices, show_corners=False)  # RESET information of calibrator data
         omnistereo_calibrator.set_true_chessboard_pose(gums_calibrated, T_Ggt_wrt_C_array, input_units="mm", chessboard_indices=img_indices, show_corners=False)  # RESET information of calibrator data
-        common_tools.save_obj_in_pickle(omnistereo_calibrator, calibrator_filename, locals())
+        save_obj_in_pickle(omnistereo_calibrator, calibrator_filename, locals())
     if evaluate_against_truth:
         # Perform pixel-level evaluation
         print(20 * "*", "EVALUATION after GT Pose Adjustment with Calibrated GUMS:", 20 * "*")
@@ -353,7 +354,8 @@ def init_OmniStereo(omni_img, top_gum_filename, bottom_gum_filename, radial_boun
     # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
     if use_perfect_model:
         from omnistereo.cata_hyper_model import PinholeCamera, HyperCata, HyperCataStereo
-        c1, c2, k1, k2, d, r_sys, r_reflex, r_cam = common_tools.get_theoretical_params_from_file(theoretical_params_filename, file_units="cm")
+        from omnistereo.common_tools import get_theoretical_params_from_file
+        c1, c2, k1, k2, d, r_sys, r_reflex, r_cam = get_theoretical_params_from_file(theoretical_params_filename, file_units="cm")
         # Points as homogeneous column vectors:
         Oc = np.array([0, 0, 0, 1]).reshape(4, 1)  # also F1'
         F1 = np.array([0, 0, c1, 1]).reshape(4, 1)  # F1
@@ -430,182 +432,12 @@ def overlay_pair(src1, src2, alpha):
     return img_dst
 
 
-# Testing with the GUM
-def main_test_synthetic():
-    is_synthetic = True
-    load_omnistereo_from_file = True  # BECAREFUL: it will disregard whatever is set next for "use_perfect_model", so don't load from file if not sure what was set as
-    use_perfect_model = True  # SET to True for using perfect "theoretical xi and gammas" model
-    view_panos = False
+def main_test():
+    is_synthetic = False
+    model_version = "new"  # "old"  # <<<< SETME: Can be "old" for older (Laura's) model, "new" for the new model parameters (mine)
+    experiment_name = "CVPR"  # "simple", "VICON", "CVPR", "with_misalignment-4", etc.  # <<<<<- SET For example, "VICON" uses ground truth data, otherwise use "simple"
 
-    do_calibration = False
-    do_single_trial = True
-    do_evaluation = False
-    load_calibrator_from_file = True
-    load_calibrated_model_from_file = True
-    refine_radial_bounds = False  # Allows to perform a manual circle fitting for the radial bounds of the calibrated model.
-    use_gums_coupled_calibration_method = True  # <<< SET: False for Decoupled calibration. True: for proposed method (New/Coupled).
-
-    get_pointclouds = True
-    compute_new_3D_points = True
-    dense_cloud = True
-    dense_manual_3D_point_selection = False
-    show_3D_reference_cyl = False
-    tune_live = False  # <<< SET: True for contiguous frames (movies). When False: the tuning is attempted (until Esc is pressed)
-    load_stereo_tuner_from_pickle = True
-    save_pcl = False
-
-    img_indices = []
-    eval_indices = None  # Use None to evaluate all
-    data_root = "data"  # The root folder for all data
-    model_version = "old"  # <<<< SETME: Can be "old" for older (Laura's) model, "new" for the new model parameters (mine)
-    rmsd_exp_range = "1m"  # <<<<<----- Set appropriately (just this is needed). For example "0.25m", "8m", etc.
-    exp_base = osp.join("chessboards", "1600x1200", rmsd_exp_range, model_version)  # <<<<<-----  For new model_parameters. Otherwise "1m" uses only Laura's
-
-    if model_version == "new":
-        experiment = ""  # <<< TEMP for theoretical alignment
-#         experiment = "with_misalignment-4"  # <<<<<----- SET to "" or "with_misalignment-NUMBER" For experiment with MISALIGNED mirrors: Rotation of TOP only + Uses NEW params
-    else:
-        experiment = ""
-
-    experiment_data_path = osp.join(data_root, exp_base, experiment)
-    omni_img_file_name_prefix = osp.join(experiment_data_path, "chessboards_experiment-")
-    omni_img_filename_template = omni_img_file_name_prefix + "*.png"
-    radial_bounds_filename = osp.join(experiment_data_path, "radial_bounds.pkl")
-    omnistereo_filename = osp.join(experiment_data_path, "omnistereo-hyperbolic.pkl")
-    stereo_calibrator_filename = osp.join(experiment_data_path, "cata_hyper_gums_calibrator.pkl")
-    calibrated_model_filename_prefix = osp.join(experiment_data_path, "gums_calibrator")
-
-    top_gum_filename = ""  # experiment_data_path + "/model_parameters_new-top-SYNT_HYPERBOLIC-1600x1200.bin"
-    bottom_gum_filename = ""  # experiment_data_path + "/model_parameters_new-bottom-SYNT_HYPERBOLIC-1600x1200.bin"
-    theoretical_params_filename = osp.join(data_root, "parameters-%s.txt" % (model_version))
-
-    if do_calibration:
-        # chessboard_params_filename = "/Users/carlos/Dropbox/workspace/POVray-catadioptrics/include/calib_pattern_poses-" + rmsd_exp_range + ".txt"
-        chessboard_params_filename = osp.join(experiment_data_path, "calib_pattern_poses.txt")
-
-    if get_pointclouds:
-        points_3D_filename_template = osp.join(experiment_data_path, "3d_points-*.pkl")
-        stereo_tuner_filename = osp.join(data_root, exp_base, "stereo_tuner.pkl")
-        features_detected_filename_template = osp.join(experiment_data_path, "sparse_correspondences-*.pkl")
-
-    img_index = 4  # <<<<<------ Choosing an arbitrary image to work with out of the set
-    if load_omnistereo_from_file:
-        gums_uncalibrated = common_tools.load_obj_from_pickle(omnistereo_filename)
-    else:
-        omni_img_filename = omni_img_filename_template.replace("*", str(img_index), 1)
-        omni_img = cv2.imread(omni_img_filename, 1)
-
-        gums_uncalibrated = init_OmniStereo(omni_img, top_gum_filename, bottom_gum_filename, radial_bounds_filename, use_perfect_model, theoretical_params_filename, model_version, is_synthetic=is_synthetic)
-
-        pano_width = np.pi * np.linalg.norm(gums_uncalibrated.bot_model.lowest_img_point - gums_uncalibrated.bot_model.precalib_params.center_point)
-        #=======================================================================
-        # from common_cv import get_images, get_masked_images_mono
-        # mirror_images = get_images(omni_img_filename_template, indices_list=img_indices, show_images=False)
-        # masked_images = get_masked_images_mono(mirror_images, gums_uncalibrated.top_model, img_indices, show_images=False, color_RGB=(0, 180, 0))
-        # cv2.imshow("????", masked_images[0])
-        #=======================================================================
-
-        gums_uncalibrated.set_current_omni_image(omni_img, pano_width_in_pixels=pano_width, generate_panoramas=True, idx=img_index, view=True)
-#         gums_uncalibrated.set_current_omni_image(masked_images[img_index], pano_width_in_pixels=pano_width, generate_panoramas=True, idx=img_index, view=False)
-
-        #=======================================================================
-        # pano_masked_top = gums_uncalibrated.top_model.panorama.get_panoramic_image(omni_img)
-        # pano_masked_bot = gums_uncalibrated.bot_model.panorama.get_panoramic_image(omni_img)
-        # cv2.imshow("Pano GUMS - Top", pano_masked_top)
-        # cv2.imshow("Pano GUMS - Bottom", pano_masked_bot)
-        #=======================================================================
-        # key = gums_uncalibrated.draw_elevations_on_panoramas(draw_own_limits=True)
-
-        #=======================================================================
-        # print("\n THEORETICAL:")
-        # gums_uncalibrated.theoretical_model.print_omnistereo_info()
-        # key = gums_uncalibrated.theoretical_model.draw_elevations_on_panoramas(draw_own_limits=False)
-        #=======================================================================
-
-        common_tools.save_obj_in_pickle(gums_uncalibrated, omnistereo_filename, locals())
-
-#     gums_uncalibrated.bot_model.draw_fwd_projection()
-#     gums_uncalibrated.top_model.draw_fwd_projection()
-#     gums_uncalibrated.draw_fwd_projection()  # Draws both figures as subplots
-
-#     model_view = gums_uncalibrated.top_model.theoretical_model.draw_model_vispy(finish_drawing=False, view=None)
-#     model_view = gums_uncalibrated.bot_model.theoretical_model.draw_model_vispy(finish_drawing=True, view=model_view)
-#     import common_plot
-#     common_plot.draw_model_mono_visvis(gums_uncalibrated.top_model.theoretical_model)
-#     common_plot.draw_omnistereo_model_visvis(gums_uncalibrated.theoretical_model)
-#     gums_uncalibrated.theoretical_model.draw_model_vispy()
-    # FIXME: Translate the initial camera view
-
-#     test_space2plane(gums_uncalibrated)
-#     test_pixel_lifting(gums_uncalibrated)
-    if view_panos:
-        pano_win_name_not_calib = "UNCALIBRATED - "
-        gums_uncalibrated.view_all_panoramas(omni_img_filename_template, img_indices, win_name_modifier=pano_win_name_not_calib, use_mask=True, mask_color_RGB=(0, 255, 0))
-    if do_calibration:
-        #=======================================================================
-        # if is_synthetic and use_perfect_model:
-        #     omnistero_true_model = gums_uncalibrated.theoretical_model
-        # else:
-        #     omnistero_true_model = gums_uncalibrated
-        #=======================================================================
-
-        if load_calibrator_from_file:
-            # Use when loading CALIBRATOR from file
-            omnistereo_calibrator = common_tools.load_obj_from_pickle(stereo_calibrator_filename)
-            omnistereo_calibrator.set_true_chessboard_pose(gums_uncalibrated, chessboard_params_filename, input_units="cm", chessboard_indices=img_indices, show_corners=True)  # Only when about to SAVE calibrator to file
-        else:
-            from omnistereo.calibration import CalibratorStereo
-            # Use when saving CALIBRATOR to file
-            omnistereo_calibrator = CalibratorStereo(working_units=gums_uncalibrated.units)
-            omnistereo_calibrator.run_corner_detection(gums_uncalibrated, omni_img_filename_template, chessboard_params_filename, input_units="cm", chessboard_indices=img_indices, reduce_pattern_size=False, visualize=True)
-            omnistereo_calibrator.set_true_chessboard_pose(gums_uncalibrated, chessboard_params_filename, input_units="cm", chessboard_indices=img_indices, show_corners=True)  # Only when about to SAVE calibrator to file
-            # SAVE calibrator:
-            common_tools.save_obj_in_pickle(omnistereo_calibrator, stereo_calibrator_filename, locals())
-
-        #=======================================================================
-        from omnistereo.common_cv import overlay_all_chessboards
-        overlay_all_chessboards(gums_uncalibrated, omnistereo_calibrator, draw_detection=True, visualize=True)  # <<<< Overlaying images
-        # omnistereo_calibrator.calibration_pairs[0].visualize_points(window_name="OmniStereoPair Corners - 0")
-        # omnistereo_calibrator.calibration_pairs[1].visualize_points(window_name="OmniStereoPair Corners - 1")
-        #=======================================================================
-
-        # CALIBRATION:
-        #=======================================================================
-        omnistereo_calibrator_calibrated = run_omnistereo_calibration(gums_uncalibrated=gums_uncalibrated, omnistereo_calibrator=omnistereo_calibrator, is_synthetic=is_synthetic, model_version=model_version, chessboard_params_filename=chessboard_params_filename, img_indices=img_indices, eval_indices=eval_indices, use_gums_coupled_calibration_method=use_gums_coupled_calibration_method, load_calibrated_model_from_file=load_calibrated_model_from_file, calibrator_filename_prefix=calibrated_model_filename_prefix, evaluate_against_truth=do_evaluation, do_radial_bounds_refinement=refine_radial_bounds, do_single_trial=do_single_trial)
-        gums_calibrated = omnistereo_calibrator_calibrated.estimated_omnistereo_model
-#         top_calibrated, top_calibrator_calibrated = run_single_calibration(omni_model=gums_uncalibrated.top_model, calibrator=omnistereo_calibrator.calib_top, is_synthetic=is_synthetic, chessboard_params_filename=chessboard_params_filename, img_indices=img_indices, eval_indices=eval_indices,load_calibrated_model_from_file=load_calibrated_model_from_file, calibrator_filename_prefix=experiment_data_path + "/single_calibrator", visualize=True, evaluate_against_truth=do_evaluation, do_radial_bounds_refinement=refine_radial_bounds)
-
-        if view_panos:
-            pano_win_name_calibrated = "CALIBRATED - "
-            gums_calibrated.view_all_panoramas(omni_img_filename_template, img_indices, win_name_modifier=pano_win_name_calibrated, use_mask=True, mask_color_RGB=(0, 255, 0))
-            # gums_calibrated.get_fully_masked_images(omni_img=None, view=True, color_RGB=(0, 255, 0))
-
-    # For SHOWING OFF: virtual office
-    office_data_path_prefix = osp.join("data", "simulation", "office")
-    scene_img_filename_template = osp.join(office_data_path_prefix, experiment, "office-" + model_version + "-*.png")  # NEW design
-    omni_scene_indices = [0]
-
-
-    # Generate Panoramas
-    gums_uncalibrated.theoretical_model.view_all_panoramas(omni_images_filename_pattern=scene_img_filename_template, img_indices=omni_scene_indices, win_name_modifier="Scene - UNCALIBRATED - ", use_mask=True, mask_color_RGB=(0, 255, 0))
-    gums_uncalibrated.view_all_panoramas(omni_images_filename_pattern=scene_img_filename_template, img_indices=omni_scene_indices, win_name_modifier="Scene - UNCALIBRATED - ", use_mask=True, mask_color_RGB=(0, 255, 0))
-    if do_calibration:
-        # Generate Panoramas for comparison
-        gums_calibrated.view_all_panoramas(omni_images_filename_pattern=scene_img_filename_template, img_indices=omni_scene_indices, win_name_modifier="Scene - CALIBRATED - ", use_mask=True, mask_color_RGB=(0, 255, 0))
-
-    if get_pointclouds:
-        from omnistereo.common_plot import compute_pointclouds
-        load_sparse_features_from_file = False
-        if do_calibration:
-            compute_pointclouds(gums_calibrated, poses_filename=None, omni_img_filename_template=scene_img_filename_template, img_indices=omni_scene_indices, compute_new_3D_points=True, points_3D_filename_template=points_3D_filename_template, features_detected_filename_template=features_detected_filename_template, dense_cloud=dense_cloud, manual_point_selection=dense_manual_3D_point_selection, show_3D_reference_cyl=show_3D_reference_cyl, load_stereo_tuner_from_pickle=load_stereo_tuner_from_pickle, save_pcl=save_pcl, pcd_cloud_path=experiment_data_path, stereo_tuner_filename=stereo_tuner_filename, tune_live=tune_live, load_sparse_features_from_file=load_sparse_features_from_file)
-        else:
-            compute_pointclouds(gums_uncalibrated.theoretical_model, poses_filename=None, omni_img_filename_template=scene_img_filename_template, img_indices=omni_scene_indices, compute_new_3D_points=True, points_3D_filename_template=points_3D_filename_template, features_detected_filename_template=features_detected_filename_template, dense_cloud=dense_cloud, manual_point_selection=dense_manual_3D_point_selection, show_3D_reference_cyl=show_3D_reference_cyl, load_stereo_tuner_from_pickle=load_stereo_tuner_from_pickle, save_pcl=save_pcl, pcd_cloud_path=experiment_data_path, stereo_tuner_filename=stereo_tuner_filename, tune_live=tune_live, load_sparse_features_from_file=load_sparse_features_from_file)
-#             compute_pointclouds(gums_uncalibrated, poses_filename=None, omni_img_filename_template=scene_img_filename_template, img_indices=omni_scene_indices, compute_new_3D_points=True, points_3D_filename_template=points_3D_filename_template, features_detected_filename_template=features_detected_filename_template, dense_cloud=dense_cloud, manual_point_selection=dense_manual_3D_point_selection, show_3D_reference_cyl=show_3D_reference_cyl, load_stereo_tuner_from_pickle=load_stereo_tuner_from_pickle, save_pcl=save_pcl, pcd_cloud_path=experiment_data_path, stereo_tuner_filename=stereo_tuner_filename, tune_live=tune_live, load_sparse_features_from_file=load_sparse_features_from_file)
-
-    from omnistereo.common_cv import clean_up
-    clean_up(wait_key_time=0)
-
-def main_test_real(is_synthetic=False):
+    # vvvvvvvvvvvvvvvvvvvvvvv OPTIONS vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
     load_omnistereo_from_file = True  # BECAREFUL: it will disregard whatever is set next for "use_perfect_model", so don't load from file if not sure what was set as
     use_perfect_model = True  # SET to True for using perfect "theoretical xi and gammas" model
 #     resolve_pose_data_wrt_C = False  # <<< We must resolve the grid poses gathered from a VICON mo-cap system and set it with respect to the camera frame of the GUMS model
@@ -614,91 +446,93 @@ def main_test_real(is_synthetic=False):
     do_calibration = True  # <<< SET to True to do Corner Extraction and calibration
     do_single_trial = True
     load_calibrator_from_file = True
-    load_calibrated_model_from_file = False  # NOTE: converged successfully for "new" and "old" mirrors. Not sure why convergence fails sometimes, but it's not my code!
-    refine_radial_bounds = False  # Allows to perform a manual circle fitting for the radial bounds of the calibrated model.
+    load_calibrated_model_from_file = True  # NOTE: converged successfully for "new" and "old" mirrors. Not sure why convergence fails sometimes, but it's not my code!
+    refine_radial_bounds = not load_calibrated_model_from_file  # Allows to perform a manual circle fitting for the radial bounds of the calibrated model.
     use_gums_coupled_calibration_method = True  # <<< SET: False for Decoupled calibration. True: for proposed method (New/Coupled).
-    evaluate = True
+    evaluate = False
 
-    get_pointclouds = False
+    get_pointclouds = True
     compute_new_3D_points = True
     dense_cloud = False
     dense_manual_3D_point_selection = False
     show_3D_reference_cyl = False
     tune_live = False  # <<< SET: True for contiguous frames (movies). When False: the tuning is attempted (until Esc is pressed)
     load_stereo_tuner_from_pickle = True
+    save_3D_points = True
     save_pcl = True
     save_sparse_features = False
     load_sparse_features_from_file = False
 
     data_root = "data"  # The root folder for all data
-    model_version = "new"  # "old"  # <<<< SETME: Can be "old" for older (Laura's) model, "new" for the new model parameters (mine)
 
     if is_synthetic:
         model_type = "synthetic"
     else:
         model_type = "real"
 
-    experiment = "VICON"  # <<<<<- SET to "VICON" if using ground truth data, otherwise use ""
+    data_path = osp.join(data_root, model_type, model_version, experiment_name)
+    calibration_data_path = osp.join(data_path, "calibration")
+    make_sure_path_exists(calibration_data_path)  # This creates the path if necessary
 
-    experiment_data_path = osp.join(data_root, model_type, model_version, experiment)
-    from omnistereo.common_tools import make_sure_path_exists
-    make_sure_path_exists(experiment_data_path)  # This creates the path if necessary
+    calib_img_file_name_prefix = osp.join(calibration_data_path, "chessboard-")
+    calib_img_filename_template = calib_img_file_name_prefix + "*.png"
+    radial_bounds_filename = osp.join(data_path, "radial_bounds.pkl")
+    omnistereo_filename = osp.join(calibration_data_path, "omnistereo-gums.pkl")
+    stereo_calibrator_filename = osp.join(calibration_data_path, "gums_calibrator.pkl")
+    calibrated_model_filename_prefix = osp.join(calibration_data_path, "gums_calibrator-calibrated")
 
-    if model_version == "old":
-        omni_img_file_name_prefix = osp.join(experiment_data_path, "omni_24mm_6x9-")
-    elif model_version == "new":
-        omni_img_file_name_prefix = osp.join(experiment_data_path, "omni_100mm_5x8-")
-    omni_img_filename_template = omni_img_file_name_prefix + "*.png"
-    radial_bounds_filename = osp.join(experiment_data_path, "radial_bounds.pkl")
-    omnistereo_filename = osp.join(experiment_data_path, "omnistereo-hyperbolic.pkl")
-    stereo_calibrator_filename = osp.join(experiment_data_path, "cata_hyper_gums_calibrator.pkl")
-    calibrated_model_filename_prefix = osp.join(experiment_data_path, "gums_calibrator")
+    # Scene:
+    scene_name = "scene"
+    scene_path = osp.join(data_path, scene_name)  # Pose estimation experiment: Translation on x only by 0, 25 cm and 75 cm (wrt init)
+    scene_img_filename_template = osp.join(scene_path, "office-*.png")  # With PUBLISHED parameters
 
-    top_gum_filename = ""  # experiment_data_path + "/model_parameters_new-top-SYNT_HYPERBOLIC-1600x1200.bin"
-    bottom_gum_filename = ""  # experiment_data_path + "/model_parameters_new-bottom-SYNT_HYPERBOLIC-1600x1200.bin"
+
+    top_gum_filename = ""  # calibration_data_path + "/model_parameters_new-top-SYNT_HYPERBOLIC-1600x1200.bin"
+    bottom_gum_filename = ""  # calibration_data_path + "/model_parameters_new-bottom-SYNT_HYPERBOLIC-1600x1200.bin"
     theoretical_params_filename = osp.join(data_root, "parameters-%s.txt" % (model_version))
 
     if do_calibration:
-        chessboard_params_filename = osp.join(experiment_data_path, "calib_pattern_poses.csv")
-        if experiment == "VICON":
+        chessboard_params_filename = osp.join(calibration_data_path, "calib_pattern_poses.csv")
+        if experiment_name == "VICON" or experiment_name == "CVPR" or is_synthetic:
             do_evaluation = evaluate and False  # FIXME: just because we are not using this GT data from 2016
         else:
             do_evaluation = False
 
     if get_pointclouds:
-        points_3D_filename_template = osp.join(experiment_data_path, "3d_points-*.pkl")
+        points_3D_filename_template = "3d_points-*.pkl"
         if dense_cloud:
-            stereo_tuner_filename = osp.join(experiment_data_path, "stereo_tuner.pkl")
+            points_3D_path = osp.join(scene_path, "cloud_dense")
         else:
-            stereo_tuner_filename = ""
-            features_detected_filename_template = osp.join(experiment_data_path, "sparse_correspondences-*.pkl")
+            points_3D_path = osp.join(scene_path, "cloud_sparse")
+        make_sure_path_exists(points_3D_path)
+        stereo_tuner_filename = osp.join(scene_path, "stereo_tuner.pkl")
+        features_detected_filename_template = "sparse_correspondences-*.pkl"
 
+    img_indices = []
+    eval_indices = None  # Use None to evaluate all
+    img_index = 0  # <<<<<------ Choosing an arbitrary image to work with out of the set
+    if not is_synthetic:
+        if model_version == "old":
+            if experiment_name == "VICON":
+                img_indices = [0, 1, 2, 4, 5]  # No data in [0,6]
+    #             img_indices = [3]  # Used for single grid visualizatio (for CVPR paper)
+                eval_indices = [2, 4]  # Omitting: [1 , 4, 5] bad VICON pose
+            else:
+                img_indices = [0, 2, 3, 4, 5, 6, 7]
+                eval_indices = [0, 2, 3, 4, 5, 6, 7]  # Use None to evaluate all
+            img_index = 4  # <<<<<------ Choosing an arbitrary image to work with out of the set
 
-    if model_version == "old":
-        if experiment == "VICON":
-            img_indices = [1, 2, 3, 4, 5]  # No data in [0,6]
-#             img_indices = [3]  # Used for single grid visualizatio (for CVPR paper)
-            eval_indices = [2, 3]  # Omitting: [1 , 4, 5] bad VICON pose
-        else:
-            img_indices = [0, 2, 3, 4, 5, 6, 7]
-            eval_indices = [0, 2, 3, 4, 5, 6, 7]  # Use None to evaluate all
-        img_index = 4  # <<<<<------ Choosing an arbitrary image to work with out of the set
-    elif model_version == "new":
-        img_indices = []
-        eval_indices = None  # Use None to evaluate all
-        img_index = 0  # <<<<<------ Choosing an arbitrary image to work with out of the set
-
-    omni_img_filename = omni_img_filename_template.replace("*", str(img_index), 1)
+    omni_img_filename = calib_img_filename_template.replace("*", str(img_index), 1)
     omni_img = cv2.imread(omni_img_filename, 1)
     if load_omnistereo_from_file:
-        gums = common_tools.load_obj_from_pickle(omnistereo_filename)
+        gums = load_obj_from_pickle(omnistereo_filename)
     else:
         gums = init_OmniStereo(omni_img, top_gum_filename, bottom_gum_filename, radial_bounds_filename, use_perfect_model, theoretical_params_filename, model_version, is_synthetic=is_synthetic)
 
         pano_width = np.pi * np.linalg.norm(gums.bot_model.lowest_img_point - gums.bot_model.precalib_params.center_point)
         #=======================================================================
         # from common_cv import get_images, get_masked_images_mono
-        # mirror_images = get_images(omni_img_filename_template, indices_list=img_indices, show_images=False)
+        # mirror_images = get_images(calib_img_filename_template, indices_list=img_indices, show_images=False)
         # masked_images = get_masked_images_mono(mirror_images, gums.top_model, img_indices, show_images=False, color_RGB=(0, 180, 0))
         # cv2.imshow("????", masked_images[0])
         #=======================================================================
@@ -714,7 +548,7 @@ def main_test_real(is_synthetic=False):
         #=======================================================================
 
         key = gums.draw_elevations_on_panoramas(draw_own_limits=True)
-        common_tools.save_obj_in_pickle(gums, omnistereo_filename, locals())
+        save_obj_in_pickle(gums, omnistereo_filename, locals())
 
 #     from omnistereo.common_plot import draw_fwd_projection_GUMS
 #     gums.bot_model.draw_fwd_projection()
@@ -734,20 +568,20 @@ def main_test_real(is_synthetic=False):
 #     test_pixel_lifting(gums)
     if view_panos:
         pano_win_name_not_calib = "UNCALIBRATED - "
-        gums.view_all_panoramas(omni_img_filename_template, img_indices, win_name_modifier=pano_win_name_not_calib, use_mask=True, mask_color_RGB=(0, 255, 0))
+        gums.view_all_panoramas(calib_img_filename_template, img_indices, win_name_modifier=pano_win_name_not_calib, use_mask=True, mask_color_RGB=(0, 255, 0))
 
     if do_calibration:
         if load_calibrator_from_file:
             # Use when loading CALIBRATOR from file
-            omnistereo_calibrator = common_tools.load_obj_from_pickle(stereo_calibrator_filename)
+            omnistereo_calibrator = load_obj_from_pickle(stereo_calibrator_filename)
         else:
             from omnistereo.calibration import CalibratorStereo
             # Use when saving CALIBRATOR to file
             omnistereo_calibrator = CalibratorStereo(working_units=gums.units)
-            omnistereo_calibrator.run_corner_detection(gums, omni_img_filename_template, chessboard_params_filename, input_units="cm", chessboard_indices=img_indices, reduce_pattern_size=False, visualize=True)
+            omnistereo_calibrator.run_corner_detection(gums, calib_img_filename_template, chessboard_params_filename, input_units="cm", chessboard_indices=img_indices, reduce_pattern_size=False, visualize=True)
             # SAVE calibrator:
             omnistereo_calibrator.set_true_chessboard_pose(gums, chessboard_params_filename, input_units="cm", chessboard_indices=img_indices, show_corners=False)  # RESET information of calibrator data
-            common_tools.save_obj_in_pickle(omnistereo_calibrator, stereo_calibrator_filename, locals())
+            save_obj_in_pickle(omnistereo_calibrator, stereo_calibrator_filename, locals())
 
         # Testing automatic point resolution
         #=======================================================================
@@ -775,12 +609,9 @@ def main_test_real(is_synthetic=False):
         # omnistereo_calibrator.calibration_pairs[4].visualize_points(window_name="OmniStereoPair Corners - 4")
 
 
-        # top_calibrated, top_calibrator_calibrated = run_single_calibration(omni_model=gums.top_model, calibrator=omnistereo_calibrator.calib_top, is_synthetic=is_synthetic, chessboard_params_filename=chessboard_params_filename, img_indices=img_indices, eval_indices=eval_indices, load_calibrated_model_from_file=load_calibrated_model_from_file, calibrator_filename_prefix=experiment_data_path + "/single_calibrator", visualize=True, evaluate_against_truth=do_evaluation, do_radial_bounds_refinement=refine_radial_bounds)
+        # top_calibrated, top_calibrator_calibrated = run_single_calibration(omni_model=gums.top_model, calibrator=omnistereo_calibrator.calib_top, is_synthetic=is_synthetic, chessboard_params_filename=chessboard_params_filename, img_indices=img_indices, eval_indices=eval_indices, load_calibrated_model_from_file=load_calibrated_model_from_file, calibrator_filename_prefix=calibration_data_path + "/single_calibrator", visualize=True, evaluate_against_truth=do_evaluation, do_radial_bounds_refinement=refine_radial_bounds)
         omnistereo_calibrator_calibrated = run_omnistereo_calibration(gums_uncalibrated=gums, omnistereo_calibrator=omnistereo_calibrator, is_synthetic=is_synthetic, model_version=model_version, chessboard_params_filename=chessboard_params_filename, img_indices=img_indices, eval_indices=eval_indices, use_gums_coupled_calibration_method=use_gums_coupled_calibration_method, load_calibrated_model_from_file=load_calibrated_model_from_file, calibrator_filename_prefix=calibrated_model_filename_prefix, evaluate_against_truth=do_evaluation, do_radial_bounds_refinement=refine_radial_bounds, do_single_trial=do_single_trial)
         gums_calibrated = omnistereo_calibrator_calibrated.estimated_omnistereo_model
-        if view_panos:
-            pano_win_name_calibrated = "CALIBRATED - "
-            gums_calibrated.view_all_panoramas(omni_img_filename_template, img_indices, win_name_modifier=pano_win_name_calibrated, use_mask=True, mask_color_RGB=(0, 255, 0))
     else:  # Attempting to just load the calibrated model
         if load_calibrated_model_from_file:
             if use_gums_coupled_calibration_method:
@@ -788,40 +619,31 @@ def main_test_real(is_synthetic=False):
             else:
                 calibrator_filename = calibrated_model_filename_prefix + "-decoupled.pkl"
 
-            omnistereo_calibrator_calibrated = common_tools.load_obj_from_pickle(calibrator_filename)
+            omnistereo_calibrator_calibrated = load_obj_from_pickle(calibrator_filename)
+            gums = omnistereo_calibrator_calibrated
             gums_calibrated = omnistereo_calibrator_calibrated.estimated_omnistereo_model
+
+    if view_panos:
+        gums.view_all_panoramas(calib_img_filename_template, img_indices, win_name_modifier=pano_win_name_not_calib, use_mask=True, mask_color_RGB=(255, 0, 255))
+        pano_win_name_calibrated = "CALIBRATED - "
+        gums_calibrated.view_all_panoramas(calib_img_filename_template, img_indices, win_name_modifier=pano_win_name_calibrated, use_mask=True, mask_color_RGB=(0, 255, 0))
 
     if get_pointclouds:
 #         if len(img_indices) > 0:
 #             indices_for_3D_pointclouds = [img_indices[0]]
 #         else:
             # HACK: Want only a-single element list?
-        if experiment == "VICON" and model_version == "new":
+        if experiment_name == "VICON" and model_version == "new" and not is_synthetic:
             indices_for_3D_pointclouds = [1, 2]
         else:
             indices_for_3D_pointclouds = [0]
-#         if model_version == "old":
-#             scene_img_filename_template = omni_img_filename_template
-#         elif model_version == "new":
-        scene_img_filename_template = osp.join(experiment_data_path, "test-*.png")
         # Generate Panoramas for comparison
         if view_panos:
             gums.view_all_panoramas(omni_images_filename_pattern=scene_img_filename_template, img_indices=indices_for_3D_pointclouds, win_name_modifier="Scene - UNCALIBRATED - ", use_mask=True, mask_color_RGB=(0, 255, 0))
             gums_calibrated.view_all_panoramas(omni_images_filename_pattern=scene_img_filename_template, img_indices=indices_for_3D_pointclouds, win_name_modifier="Scene - CALIBRATED - ", use_mask=True, mask_color_RGB=(0, 255, 0))
 
-        if experiment == "VICON" and model_version == "old":
-            # Using theoretical model for Sensors paper
-            #===================================================================
-            # omnistereo_model_for_point_clouds = gums.theoretical_model
-            # pano_width_theo = np.pi * np.linalg.norm(omnistereo_model_for_point_clouds.bot_model.lowest_img_point - omnistereo_model_for_point_clouds.bot_model.precalib_params.center_point)
-            # omnistereo_model_for_point_clouds.set_current_omni_image(omni_img, pano_width_in_pixels=pano_width_theo, generate_panoramas=True, idx=img_index, view=True)
-            #===================================================================
-            omnistereo_model_for_point_clouds = gums_calibrated
-        else:
-            omnistereo_model_for_point_clouds = gums_calibrated
-
         from omnistereo.common_plot import compute_pointclouds
-        compute_pointclouds(omnistereo_model_for_point_clouds, poses_filename=None, omni_img_filename_template=scene_img_filename_template, features_detected_filename_template=features_detected_filename_template, img_indices=indices_for_3D_pointclouds, compute_new_3D_points=True, points_3D_filename_template=points_3D_filename_template, dense_cloud=dense_cloud, manual_point_selection=dense_manual_3D_point_selection, show_3D_reference_cyl=show_3D_reference_cyl, load_stereo_tuner_from_pickle=load_stereo_tuner_from_pickle, save_pcl=save_pcl, pcd_cloud_path=experiment_data_path, stereo_tuner_filename=stereo_tuner_filename, tune_live=tune_live, save_sparse_features=save_sparse_features, load_sparse_features_from_file=load_sparse_features_from_file)
+        compute_pointclouds(omnistereo_model=gums_calibrated, poses_filename=None, omni_img_filename_template=scene_img_filename_template, features_detected_filename_template=features_detected_filename_template, img_indices=indices_for_3D_pointclouds, compute_new_3D_points=compute_new_3D_points, save_3D_points=save_3D_points, points_3D_path=points_3D_path, points_3D_filename_template=points_3D_filename_template, dense_cloud=dense_cloud, manual_point_selection=dense_manual_3D_point_selection, show_3D_reference_cyl=show_3D_reference_cyl, load_stereo_tuner_from_pickle=load_stereo_tuner_from_pickle, save_pcl=save_pcl, stereo_tuner_filename=stereo_tuner_filename, tune_live=tune_live, save_sparse_features=save_sparse_features, load_sparse_features_from_file=load_sparse_features_from_file)
 
     from omnistereo.common_cv import clean_up
     clean_up(wait_key_time=0)
@@ -834,13 +656,13 @@ def main_test_live():
 #     exp_base = osp.join("chessboards", "2592x1944" + model_version)  # <<<<<-----  For new model_parameters. Otherwise "1m" uses only Laura's
     exp_base = osp.join("real", model_version)  # <<<<<-----  For new model_parameters. Otherwise "1m" uses only Laura's
 
-    experiment = "VICON"  # <<<<<- SET to "VICON" if using ground truth data, otherwise use ""
-    experiment_data_path = osp.join(data_root, exp_base, experiment)
+    calibration_ground_truth = "VICON"  # <<<<<- SET to "VICON" if using ground truth data, otherwise use ""
+    experiment_data_path = osp.join(data_root, exp_base, calibration_ground_truth)
     calibrated_model_filename_prefix = osp.join(experiment_data_path, "gums_calibrator")
     from omnistereo.webcam_live import WebcamLive
     cam = WebcamLive(cam_index=0, mirror_image=False, file_name="", cam_model="BLACKFLY", show_img=False)
     calibrator_filename = calibrated_model_filename_prefix + ".pkl"
-    omnistereo_calibrator_calibrated = common_tools.load_obj_from_pickle(calibrator_filename)
+    omnistereo_calibrator_calibrated = load_obj_from_pickle(calibrator_filename)
     gums_calibrated = omnistereo_calibrator_calibrated.estimated_omnistereo_model
     pano_width = np.pi * np.linalg.norm(gums_calibrated.bot_model.lowest_img_point - gums_calibrated.bot_model.precalib_params.center_point)
     stereo_tuner_filename = osp.join(experiment_data_path, "stereo_tuner.pkl")
@@ -940,8 +762,8 @@ def main_test_remotereality_mono():
     model_version = "rr"
     exp_base = osp.join("chessboards", model_version)  # <<<<<-----  For new model_parameters. Otherwise "1m" uses only Laura's
 
-    experiment = ""  # "VICON"  # <<<<<- SET to "VICON" if using ground truth data, otherwise use ""
-    experiment_data_path = osp.join(data_root, exp_base, experiment)
+    calibration_ground_truth = ""  # "VICON"  # <<<<<- SET to "VICON" if using ground truth data, otherwise use ""
+    experiment_data_path = osp.join(data_root, exp_base, calibration_ground_truth)
 #     omni_img_file_name_prefix = osp.join(experiment_data_path, "cam_0-duo-") # BOTTOM
     omni_img_file_name_prefix = osp.join(experiment_data_path, "cam_1-duo-")  # TOP
     omni_img_filename_template = omni_img_file_name_prefix + "*.png"
@@ -974,8 +796,7 @@ def main_test_remotereality_mono():
     clean_up(wait_key_time=1)
 
 if __name__ == '__main__':
-#     main_test_synthetic()
-    main_test_real()
+    main_test()
 #     main_test_live()
 #     main_test_remotereality_mono()
 

@@ -6,7 +6,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import transformations as tr
+import omnistereo.transformations as tr
 
 working_units = "cm"  # ONLY for OLD experiments (initial-CVPR submission)
 # Information for header
@@ -146,7 +146,7 @@ def find_camera_pose(pos_Rvicon_wrt_C, rot_Rvicon_wrt_C_angles, Rvicon_translati
     return T_C_wrt_W
 
 # TODO: IDEA optimize the pose resolution of the vicon system so it reduces the error against the calibrated results evaluation.
-from sensor_evaluation import evaluate_3D_error_from_grid_poses
+from omnistereo.sensor_evaluation import evaluate_3D_error_from_grid_poses
 
 def optimize_cam_pos_wrt_C_theoretical(omnistereo_model, calibrator, eval_indices, model_version, chessboard_params_filename, x_axis_points=None, do_single_trial=True):
     if x_axis_points is None:
@@ -206,7 +206,7 @@ def measure_cam_pos_error(x, omnistereo_model, calibrator, eval_indices, x_axis_
     return error
 
 def get_axis_points_manually(omnistereo_model):
-    from common_cv import PointClicker
+    from omnistereo.common_cv import PointClicker
     import cv2
     clicker_window_name = "Vicon's X-axis extraction (click Origin, then direction point)"
     cv2.namedWindow(clicker_window_name, cv2.WINDOW_NORMAL)
@@ -248,8 +248,8 @@ def resolve_poses_wrt_C_theoretical(omnistereo_model, rig_version, grid_output_f
     elevation_rsys_wrt_F = elevation_angles_wrt_F[0, 0]  # This point should be coplanar with the marker's centroid that acts as the [Rvicon] origin
     azimuth_Rvicon_x_axis_end_wrt_C = azimuth_angles[0, 1]
 
-    from cata_hyper_model import HyperCataStereo
-    from gum import GUMStereo
+    from omnistereo.cata_hyper_model import HyperCataStereo
+    from omnistereo.gum import GUMStereo
     if isinstance(omnistereo_model, HyperCataStereo):  # Using the Theoretical model
         z_rsys_wrt_C = omnistereo_model.height_above
     elif isinstance(omnistereo_model, GUMStereo):
@@ -363,10 +363,10 @@ def experiment_rr(data_path, rig_markers_indices, grid_markers_indices):
         pos_err = test_T_with_point_on_plane(filename_grid_markers, T_grid_wrt_Vicon, idx_test_pt=1, pt_test_pos_wrt_G=[373, 100, 0, 1])
         pos_errors += [pos_err]
 
-    from common_tools import error_analysis_simple
+    from omnistereo.common_tools import error_analysis_simple
     error_analysis_simple(pos_errors, units="mm")
 
-def marker_error_omnistereo_rig(data_path, rig_markers_indices, grid_markers_indices):
+def marker_error_omnistereo_rig(data_path, rig_markers_indices, grid_markers_indices, grid_poses_list):
     '''
     Marker on rig look like, where O is the origin, X and ~y are coplanar, but m3 is the extra marker closer to O
             . . .
@@ -380,7 +380,6 @@ def marker_error_omnistereo_rig(data_path, rig_markers_indices, grid_markers_ind
           .          .
              . ~y.
     '''
-    grid_poses_list = [0, 1, 2, 3, 4, 5, 6, 7]
 
     # Analysis about known makers positions:
     # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
@@ -394,7 +393,7 @@ def marker_error_omnistereo_rig(data_path, rig_markers_indices, grid_markers_ind
         pos_errors += [pos_err]
         pos_err = test_T_with_point_on_plane(filename_grid_markers, T_grid_wrt_Vicon, idx_test_pt=3, pt_test_pos_wrt_G=[920, 200, 0, 1])
         pos_errors += [pos_err]
-    from common_tools import error_analysis_simple
+    from omnistereo.common_tools import error_analysis_simple
     error_analysis_simple(pos_errors, units="mm")
     # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -410,7 +409,7 @@ def marker_error_omnistereo_rig(data_path, rig_markers_indices, grid_markers_ind
     T_Ggt_wrt_Gvicon_static = tr.concatenate_matrices(T_Ggt_wrt_Gvicon_trans, T_Ggt_wrt_Gvicon_rot)  # Order: 1st) Rotation, and then 2nd) Translation
 
     T_Ggt_wrt_R_list = get_T_Ggt_wrt_R(data_path, grid_poses_list, rig_markers_indices, grid_markers_indices, T_Ggt_wrt_Gvicon_static)
-    from common_plot import draw_frame_poses
+    from omnistereo.common_plot import draw_frame_poses
     draw_frame_poses(T_Ggt_wrt_R_list)
     # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -442,9 +441,10 @@ if __name__ == '__main__':
     # grid_markers_indices_rr =[2, 0, 3]
     # experiment_rr(data_path=data_path_rr, rig_markers_indices=rig_markers_indices_rr, grid_markers_indices=grid_markers_indices_rr)
     #===========================================================================
-    data_path_omnistereo = "data/chessboards/1920x1200/new/VICON"
+    data_path_omnistereo = "data/real/new/VICON/calibration"
     rig_markers_indices_omnistereo = [3, 1, 2]
     grid_markers_indices_omnistereo = [0, 1, 2]
-    marker_error_omnistereo_rig(data_path=data_path_omnistereo, rig_markers_indices=rig_markers_indices_omnistereo, grid_markers_indices=grid_markers_indices_omnistereo)
+    grid_poses_list = [0, 1, 2, 3, 4, 5, 6, 7]
+    marker_error_omnistereo_rig(data_path=data_path_omnistereo, rig_markers_indices=rig_markers_indices_omnistereo, grid_markers_indices=grid_markers_indices_omnistereo, grid_poses_list=grid_poses_list)
 
 

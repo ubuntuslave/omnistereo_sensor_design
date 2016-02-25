@@ -67,6 +67,8 @@ Install `Qt4` from Homebrew. Then, to build `OpenCV` with `Qt4`, try without the
     
     $ cmake -DWITH_QT=4 ../
 
+    $ cmake -D CMAKE_BUILD_TYPE=RELEASE -D CMAKE_INSTALL_PREFIX=/usr/local -DWITH_QT=4 -D BUILD_opencv_python3=ON -D PYTHON3_EXECUTABLE=/usr/local/bin/python3 -D PYTHON3_PACKAGES_PATH=lib/python3.5/site-packages -D PYTHON3_LIBRARY=/usr/local/Cellar/python3/3.5.1/Frameworks/Python.framework/Versions/3.5/lib/libpython3.5m.dylib -D PYTHON3_INCLUDE_DIR=/usr/local/Cellar/python3/3.5.1/Frameworks/Python.framework/Versions/3.5/include/python3.5m -D INSTALL_C_EXAMPLES=OFF -D INSTALL_PYTHON_EXAMPLES=OFF -D BUILD_EXAMPLES=OFF -D OPENCV_EXTRA_MODULES_PATH=/Users/carlos/src/opencv_contrib/modules -D BUILD_opencv_viz=OFF ..
+
 Then, install [PyQT](http://www.riverbankcomputing.co.uk/software/pyqt/intro)
 
     $ brew install pyqt --with-python3
@@ -75,7 +77,13 @@ It can be tested from  a Python Shell:
     
     >>> from PyQt4.QtGui import *
 
-#### Build OpenCV from source:
+#### Install OpenCV 3 via Homebrew
+    
+    $ brew install opencv3 --with-contrib --with-ffmpeg --with-gphoto2 --with-gstreamer --with-jasper --with-libdc1394 --with-openni2 --with-python3 --with-qt --with-tbb
+    
+    $ brew link --overwrite --force opencv3
+
+#### The Hard (more powerful) way from Source Code:
     
 Clone *OpenCV 3* from the repo
 
@@ -127,19 +135,19 @@ The *Python 3.5* configuration looked like this:
 
 The OpenNi configuration (If Enabled, set them by toggling the advanced mode):
 
-    OPENNI2_INCLUDES                */usr/local/include/ni2
-    OPENNI2_LIBRARY                 */usr/local/lib/ni2/lib/OpenNI2.dylib
-    OPENNI_INCLUDES                 */usr/local/include/ni
-    OPENNI_LIBRARY                  */usr/lib/libOpenNI.dylib
+    OPENNI2_INCLUDES                /usr/local/include/ni2
+    OPENNI2_LIBRARY                 /usr/local/lib/ni2/lib/OpenNI2.dylib
+    OPENNI_INCLUDES                 /usr/local/include/ni
+    OPENNI_LIBRARY                  /usr/lib/libOpenNI.dylib
 
 which will set something like this:
 
-    OPENNI2_INCLUDE_DIR             */usr/local/include
-    OPENNI2_LIB_DIR                 */usr/local/lib/ni2/lib
-    OPENNI_INCLUDE_DIR              */usr/local/include
-    OPENNI_LIB_DIR                  */usr/lib
-    OPENNI_PRIME_SENSOR_MODULE      */usr/lib/libXnCore.dylib
-    OPENNI_PRIME_SENSOR_MODULE_BIN  */usr/lib
+    OPENNI2_INCLUDE_DIR             /usr/local/include
+    OPENNI2_LIB_DIR                 /usr/local/lib/ni2/lib
+    OPENNI_INCLUDE_DIR              /usr/local/include
+    OPENNI_LIB_DIR                  /usr/lib
+    OPENNI_PRIME_SENSOR_MODULE      /usr/lib/libXnCore.dylib
+    OPENNI_PRIME_SENSOR_MODULE_BIN  /usr/lib
  
 You can ignore any warning about QT5
 
