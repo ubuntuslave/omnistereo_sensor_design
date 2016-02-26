@@ -3,7 +3,7 @@
 .settings
 ..bfg-report
 
-# Markdown garbage:
+# Markdown garbage
 .*.md.html
 
 # Python stuff
