@@ -160,9 +160,23 @@ Compile, and install as usual:
     
 ### (Optional) PCL:
 
-See instructions to install PCL and 
+To install the **PCL 1.7.2** version using the formula, execute the following command (it worked on 2016/02/23) without support for *VTK 7*.
 
-#### `python-pcl`
+#### 1) Install vtk (latest version, watch out for compatibilities!)
+
+    $ brew install vtk
+
+or more explicit:
+
+    $ brew install vtk --with-qt --with-matplotlib --with-examples
+    
+#### 2) Build PCL
+    
+    $ brew install pcl --without-vtk
+    $ brew link --overwrite pcl
+    $ brew linkapps pcl 
+    
+#### 3) Build the PCL Python wrapper `python-pcl`
 
 First, get `cython`
 
