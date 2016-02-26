@@ -1,6 +1,7 @@
 # IDE stuff
 .project
 .settings
+..bfg-report
 
 # Markdown garbage:
 .*.md.html
