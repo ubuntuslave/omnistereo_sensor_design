@@ -40,6 +40,16 @@ import pickle
 
 import os
 import errno
+
+def get_current_os_name():
+    from sys import platform as _platform
+    if _platform == "linux" or _platform == "linux2":
+        return "linux"  # linux
+    elif _platform == "darwin":
+        return "mac"  # OS X
+    elif _platform == "win32" or _platform == "cygwin":
+        return "windows"  # Windows...
+
 def make_sure_path_exists(path):
     try:
         os.makedirs(path)
@@ -358,7 +368,8 @@ def get_screen_resolution(measurement="px"):
                                     else:
                                         raise NotImplementedError("Handling %s is not implemented." % measurement)
 
-def get_poses_from_file(poses_filename, input_units="cm", model_working_units="mm", indices=None):
+# TODO: We don't really need this function anymore since data is loaded via drivers (see vicon_utils.py).
+def get_poses_from_file(grid_poses_filename, input_units="cm", model_working_units="mm", indices=None):
     '''
     @param poses_filename:  the comma separated file for the rig's pose information at each instance (used by POV-Ray)
     @param indices: the indices for the working images
@@ -368,16 +379,19 @@ def get_poses_from_file(poses_filename, input_units="cm", model_working_units="m
     '''
     import omnistereo.transformations as tr
 
-    info_file = open(poses_filename, 'r')
-    info_content_lines = info_file.readlines()  # Read contents is just a long string
-    info_file.close()
+    if isinstance(grid_poses_filename, str):  # It's a filename
+        grid_poses_from_file = np.loadtxt(grid_poses_filename, delimiter=',', usecols=(0, 1, 2, 3, 4, 5), comments="#", unpack=False)
+        if len(grid_poses_from_file) == 0:
+            print("Couldn't find grid poses in file")
+            print("Exiting from", __name__)
+            exit(1)
 
     list_len = len(indices)
     grid_poses_list = list_len * [None]
     transform_matrices_list = list_len * [None]
     for pose_number in indices:
         try:
-            pose_info_list = info_content_lines[pose_number].split(",")
+            pose_info_list = grid_poses_from_file[pose_number]
             # pose info will be given as a list (7-vector) of the rotation quaternion components [w, x, y, z] followed by translation components [tx, ty, tz].
 
             pose_info = 7 * [0.0]
