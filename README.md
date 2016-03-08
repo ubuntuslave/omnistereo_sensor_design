@@ -19,9 +19,11 @@ The following iPython Notebooks reproce the analysis plots performed over the *T
 
 `omnistereo_sensor_design` is a *proof-of-concept* written in Python for depth perception using a custom-designed catadioptric omnidirectional stereo sensor.
 
-## Program Setup in Python 3:
+## Setup
 
-Using Python 3.5:
+### Python Modules:
+
+For instance Using Python 3.5, with `pip3`, install the following modules:
 
     $ pip3 install numpy
     $ pip3 install scipy
@@ -31,6 +33,10 @@ For visualization:
 
     $ pip3 install matplotlib
     $ pip3 install mpldatacursor
+
+***NOTE***: In Linux, you may get *Permission Denied* errors that can be solved by:
+
+    $ sudo rm -rf ~/.cache/pip/
 
 ### (Optional) For 3D Visualization:
 
@@ -75,13 +81,16 @@ It can be tested from  a Python Shell:
     
     >>> from PyQt4.QtGui import *
 
-#### Install OpenCV 3 via Homebrew
+#### Install OpenCV 3
+
+
+##### The Easy Way Via Homebrew (Mac OS X only):
     
     $ brew install opencv3 --with-contrib --with-ffmpeg --with-gphoto2 --with-gstreamer --with-jasper --with-libdc1394 --with-openni2 --with-python3 --with-qt --with-tbb
     
     $ brew link --overwrite --force opencv3
 
-#### The Hard (more powerful) way from Source Code:
+##### The Hard (more powerful) Way from Source Code:
     
 Clone *OpenCV 3* from the repo
 
@@ -102,61 +111,31 @@ Then, configure the installation:
 ##### Configure OpenCV via CMake
 
 To build `OpenCV` with `Qt4` and `Python 3.5`, try without the GUI configuration:  
+
+###### Under OS X:
     
-    $ cmake -D CMAKE_BUILD_TYPE=RELEASE -D CMAKE_INSTALL_PREFIX=/usr/local -DWITH_QT=4 -D BUILD_opencv_python3=ON -D PYTHON3_EXECUTABLE=/usr/local/bin/python3 -D PYTHON3_PACKAGES_PATH=lib/python3.5/site-packages -D PYTHON3_LIBRARY=/usr/local/Cellar/python3/3.5.1/Frameworks/Python.framework/Versions/3.5/lib/libpython3.5m.dylib -D PYTHON3_INCLUDE_DIR=/usr/local/Cellar/python3/3.5.1/Frameworks/Python.framework/Versions/3.5/include/python3.5m -D INSTALL_C_EXAMPLES=OFF -D INSTALL_PYTHON_EXAMPLES=OFF -D BUILD_EXAMPLES=OFF -D OPENCV_EXTRA_MODULES_PATH=/Users/carlos/src/opencv_contrib/modules -D BUILD_opencv_viz=OFF ..
+    $ cmake -D CMAKE_BUILD_TYPE=RELEASE -D CMAKE_INSTALL_PREFIX=/usr/local -DWITH_QT=4 -D BUILD_opencv_python3=ON -D PYTHON3_EXECUTABLE=/usr/local/bin/python3 -D PYTHON3_PACKAGES_PATH=lib/python3.5/site-packages -D PYTHON3_LIBRARY=/usr/local/Cellar/python3/3.5.1/Frameworks/Python.framework/Versions/3.5/lib/libpython3.5m.dylib -D PYTHON3_INCLUDE_DIR=/usr/local/Cellar/python3/3.5.1/Frameworks/Python.framework/Versions/3.5/include/python3.5m -D INSTALL_C_EXAMPLES=OFF -D INSTALL_PYTHON_EXAMPLES=OFF -D BUILD_EXAMPLES=OFF -D OPENCV_EXTRA_MODULES_PATH=/YOUR/PATH/TO/opencv_contrib/modules -D BUILD_opencv_viz=OFF ..
    
-The relevant Curses CMake (by running `$ ccmake ..`) configuration options may look like this:
-
-     OPENCV_EXTRA_MODULES_PATH        /blabla...bla/src/opencv_contrib/modules    
-     
-The following module was causing trouble:
-
-    - WITH_OPENGL
-    
-Trouble from `opencv_contrib`, so I turned it off:
-
-    - BUILD_opencv_cvv
-
-The *Python 3.5* configuration looked like this:
-
-    PYTHON2_EXECUTABLE               /usr/local/bin/python2.7
-    PYTHON2_INCLUDE_DIR              /usr/local/Frameworks/Python.framework/Versions/2.7/include/python2.7
-    PYTHON2_INCLUDE_DIR2
-    PYTHON2_LIBRARY                  /usr/local/Frameworks/Python.framework/Versions/2.7/lib/libpython2.7.dylib
-    PYTHON2_LIBRARY_DEBUG
-    PYTHON2_NUMPY_INCLUDE_DIRS       /usr/local/lib/python2.7/site-packages/numpy/core/include
-    PYTHON2_PACKAGES_PATH            lib/python2.7/site-packages
-    PYTHON3_EXECUTABLE               /usr/local/bin/python3
-    PYTHON3_INCLUDE_DIR              /usr/local/Frameworks/Python.framework/Versions/3.5/include/python3.5m
-    PYTHON3_INCLUDE_DIR2
-    PYTHON3_LIBRARY                  /usr/local/Frameworks/Python.framework/Versions/3.5/lib/libpython3.5.dylib
-    PYTHON3_LIBRARY_DEBUG
-    PYTHON3_NUMPY_INCLUDE_DIRS       /usr/local/lib/python3.5/site-packages/numpy/core/include
-    PYTHON3_PACKAGES_PATH            lib/python3.5/site-packages
-
-The OpenNi configuration (If Enabled, set them by toggling the advanced mode):
-
-    OPENNI2_INCLUDES                /usr/local/include/ni2
-    OPENNI2_LIBRARY                 /usr/local/lib/ni2/lib/OpenNI2.dylib
-    OPENNI_INCLUDES                 /usr/local/include/ni
-    OPENNI_LIBRARY                  /usr/lib/libOpenNI.dylib
-
-which will set something like this:
-
-    OPENNI2_INCLUDE_DIR             /usr/local/include
-    OPENNI2_LIB_DIR                 /usr/local/lib/ni2/lib
-    OPENNI_INCLUDE_DIR              /usr/local/include
-    OPENNI_LIB_DIR                  /usr/lib
-    OPENNI_PRIME_SENSOR_MODULE      /usr/lib/libXnCore.dylib
-    OPENNI_PRIME_SENSOR_MODULE_BIN  /usr/lib
- 
-You can ignore any warning about QT5
-
-Compile, and install as usual:
+Then, compile, and install as usual:
 
     $ make
     $ make install
- 
+
+
+##### In Ubuntu Linux
+
+In Ubuntu 14.04, use: (won't install Python 3 support)
+    
+    $ cmake -D CMAKE_BUILD_TYPE=RELEASE -D CMAKE_INSTALL_PREFIX=/usr/local -D WITH_TBB=ON -D BUILD_NEW_PYTHON_SUPPORT=ON -D WITH_V4L=ON -D INSTALL_C_EXAMPLES=OFF -D INSTALL_PYTHON_EXAMPLES=ON -D BUILD_EXAMPLES=ON -D WITH_QT=ON -D WITH_OPENGL=ON -D OPENCV_EXTRA_MODULES_PATH=~/src/opencv_contrib/modules ..   
+    
+Compile, and install:
+
+    $ make -j2
+    $ sudo checkinstall
+
+    $ sudo sh -c 'echo "/usr/local/lib" > /etc/ld.so.conf.d/opencv.conf'
+    $ sudo ldconfig
+        
     
 ### (Optional) PCL:
 
@@ -219,3 +198,13 @@ If problems,
 
 ##### Caveat:
 Python-PCL doesn't support color, only types `PointXYZ`. Using C++, the PointCloud and the Colors can be registered (merged) to be become of type `PointXYZRGB`
+
+### Running the Demo
+
+#### Add `omnistereo` to your $PYTHONPATH:
+
+To your `.bashrc` file, you may add:
+
+    # Omnistereo project stuff for Python    OMNISTEREO=~/src/gums    if [ -z $PYTHONPATH ]    then        export PYTHONPATH="$OMNISTEREO"    else        export PYTHONPATH="$PYTHONPATH:$OMNISTEREO"    fiSave, close, and reopen your Terminal
+#### Run Python as Usual:
+    $ python demo_cata_hyper_model.py
