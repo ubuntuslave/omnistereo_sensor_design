@@ -136,6 +136,10 @@ Compile, and install:
     $ sudo sh -c 'echo "/usr/local/lib" > /etc/ld.so.conf.d/opencv.conf'
     $ sudo ldconfig
         
+*NOTE*:  The new package has been installed and saved to `~/src/opencv/build/build_20160308-1_amd64.deb`. You can remove it from your system anytime using: 
+
+    $ dpkg -r build
+
     
 ### (Optional) PCL:
 
@@ -205,6 +209,18 @@ Python-PCL doesn't support color, only types `PointXYZ`. Using C++, the PointClo
 
 To your `.bashrc` file, you may add:
 
-    # Omnistereo project stuff for Python    OMNISTEREO=~/src/gums    if [ -z $PYTHONPATH ]    then        export PYTHONPATH="$OMNISTEREO"    else        export PYTHONPATH="$PYTHONPATH:$OMNISTEREO"    fiSave, close, and reopen your Terminal
-#### Run Python as Usual:
-    $ python demo_cata_hyper_model.py
+    # Omnistereo project stuff for Python
+    OMNISTEREO=~/src/gums
+    if [ -z $PYTHONPATH ]
+    then
+        export PYTHONPATH="$OMNISTEREO"
+    else
+        export PYTHONPATH="$PYTHONPATH:$OMNISTEREO"
+    fi
+
+Save, close, and reopen your Terminal
+
+
+#### Run Python as Usual:
+
+    $ python demo_cata_hyper_model.py
